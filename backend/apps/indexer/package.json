@@ -1,0 +1,25 @@
+{
+  "name": "phin-indexer",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "dev": "NODE_ENV=development tsx src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "tsx tests/retry.spec.ts && tsx tests/blockPoller.spec.ts && tsx tests/gatewayMonitor.spec.ts && tsx tests/publisher.spec.ts && tsx tests/db-client.spec.ts && tsx tests/arnsSync.spec.ts"
+  },
+  "dependencies": {
+    "@types/pg": "^8.18.0",
+    "dotenv": "^16.4.0",
+    "pg": "^8.20.0",
+    "phin-cache": "0.1.0",
+    "phin-gateway": "0.1.0",
+    "phin-types": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}
