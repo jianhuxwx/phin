@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
 
-import dotenv from 'dotenv';
-
 import { createRedisClient, PubSubChannels } from 'phin-cache';
 import type Redis from 'ioredis';
 
@@ -12,8 +10,9 @@ import {
   publishStatsUpdate
 } from '../src/publisher';
 import type { GatewayStatus } from 'phin-types';
+import { loadIndexerEnv } from '../src/loadEnv';
 
-dotenv.config();
+loadIndexerEnv();
 
 type PublishedMessage = {
   channel: string;

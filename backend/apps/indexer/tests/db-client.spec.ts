@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 
-import dotenv from 'dotenv';
-
 import { createDatabasePool, testConnection } from '../src/db/client';
 import { runMigrations } from '../src/db/migrate';
 import { schemaStatements } from '../src/db/schema';
+import { loadIndexerEnv } from '../src/loadEnv';
 
-dotenv.config();
+loadIndexerEnv();
 
 function log(message: string, meta?: Record<string, unknown>) {
   if (meta) {

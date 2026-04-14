@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 
 import type { Pool } from 'pg';
-import dotenv from 'dotenv';
 
 import { createDatabasePool } from '../src/db/client';
 import { runMigrations } from '../src/db/migrate';
+import { loadIndexerEnv } from '../src/loadEnv';
 
-dotenv.config();
+loadIndexerEnv();
 
 const REQUIRED_ENV_VARS = ['DATABASE_URL', 'GATE_AR_URL', 'GATE_AR_FALLBACK_URLS', 'REDIS_URL'];
 

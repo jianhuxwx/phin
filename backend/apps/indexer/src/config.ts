@@ -1,6 +1,6 @@
-import dotenv from 'dotenv';
+import { loadIndexerEnv } from './loadEnv';
 
-dotenv.config();
+loadIndexerEnv();
 
 interface IndexerConfig {
   nodeEnv: string;
@@ -30,4 +30,3 @@ const indexerConfig: IndexerConfig = {
 };
 
 export { indexerConfig, IndexerConfig };
-

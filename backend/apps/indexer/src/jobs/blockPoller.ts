@@ -603,8 +603,7 @@ export async function cacheBlock(redis: Redis, payload: BlockCachePayload): Prom
 
 export async function cacheTransactions(
   redis: Redis,
-  transactions: ArweaveTransactionNode[],
-  _blockHeight: number
+  transactions: ArweaveTransactionNode[]
 ): Promise<void> {
   if (!transactions.length) {
     return;
@@ -800,7 +799,7 @@ async function processNewBlock(
 
   const cachePromises = [
     cacheBlock(redis, blockPayload),
-    cacheTransactions(redis, transactions, blockInfo.height),
+    cacheTransactions(redis, transactions),
     cacheNetworkStats(redis, statsPayload),
     persistLastKnownHeight(redis, blockInfo.height)
   ];
