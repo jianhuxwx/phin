@@ -15,7 +15,6 @@ export const getWalletTransactionsSchema = {
   querystring: paginationSchema
 };
 
-export const getWalletFilesSchema = getWalletSchema;
+export const getWalletFilesSchema = getWalletTransactionsSchema;
 
 export const getWalletArnsSchema = getWalletSchema;
-

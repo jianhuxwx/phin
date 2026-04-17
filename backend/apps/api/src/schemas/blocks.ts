@@ -1,4 +1,4 @@
-import { txIdSchema, paginationSchema } from './common';
+import { txIdSchema, paginationSchema, blockHeightSchema } from './common';
 
 export const listBlocksSchema = {
   querystring: paginationSchema
@@ -14,6 +14,16 @@ export const getBlockByIdSchema = {
   }
 };
 
+export const getBlockByHeightSchema = {
+  params: {
+    type: 'object',
+    properties: {
+      height: blockHeightSchema
+    },
+    required: ['height']
+  }
+};
+
 export const getBlockTransactionsSchema = {
   params: {
     type: 'object',
@@ -22,5 +32,10 @@ export const getBlockTransactionsSchema = {
     },
     required: ['id']
   },
-  querystring: paginationSchema
+  querystring: {
+    type: 'object',
+    properties: {
+      limit: paginationSchema.properties.limit
+    }
+  }
 };

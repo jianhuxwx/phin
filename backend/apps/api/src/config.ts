@@ -1,6 +1,6 @@
-import dotenv from 'dotenv';
+import { loadApiEnv } from './loadEnv';
 
-dotenv.config();
+loadApiEnv();
 
 interface AppConfig {
   port: number;
@@ -45,4 +45,3 @@ const config: AppConfig = {
 };
 
 export { config, AppConfig };
-

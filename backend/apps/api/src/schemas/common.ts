@@ -16,10 +16,9 @@ export const blockHeightSchema = {
 export const paginationSchema = {
   type: 'object',
   properties: {
-    page: { type: 'integer', minimum: 1 },
-    limit: { type: 'integer', minimum: 1, maximum: 50 }
-  },
-  required: ['page', 'limit']
+    page: { type: 'integer', minimum: 1, default: 1 },
+    limit: { type: 'integer', minimum: 1, maximum: 50, default: 20 }
+  }
 };
 
 export const errorResponseSchema = {
@@ -30,4 +29,3 @@ export const errorResponseSchema = {
   },
   required: ['error', 'statusCode']
 };
-

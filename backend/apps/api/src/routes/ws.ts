@@ -12,9 +12,9 @@ const wsRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
         })
       );
 
-      connection.socket.on('message', (message) => {
+      connection.socket.on('message', (message: unknown) => {
         try {
-          const parsed = JSON.parse(message.toString());
+          const parsed = JSON.parse(String(message));
           console.log('Received WS message', parsed);
         } catch {
           console.warn('Received invalid WS message');
@@ -25,4 +25,3 @@ const wsRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
 };
 
 export default wsRoutes;
-

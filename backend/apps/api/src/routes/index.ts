@@ -10,7 +10,14 @@ import previewRoutes from './preview';
 import keysRoutes from './keys';
 import wsRoutes from './ws';
 
-export async function registerRoutes(app: FastifyInstance): Promise<void> {
+interface RegisterRoutesOptions {
+  enableWebsocket?: boolean;
+}
+
+export async function registerRoutes(
+  app: FastifyInstance,
+  options: RegisterRoutesOptions = {}
+): Promise<void> {
   app.register(blocksRoutes, { prefix: '/v1' });
   app.register(transactionsRoutes, { prefix: '/v1' });
   app.register(walletsRoutes, { prefix: '/v1' });
@@ -20,6 +27,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.register(aoRoutes, { prefix: '/v1' });
   app.register(previewRoutes, { prefix: '/v1' });
   app.register(keysRoutes, { prefix: '/v1' });
-  app.register(wsRoutes, { prefix: '/v1' });
-}
 
+  if (options.enableWebsocket) {
+    app.register(wsRoutes, { prefix: '/v1' });
+  }
+}

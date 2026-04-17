@@ -1,0 +1,346 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+const TX_ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const BLOCK_ID = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+const WALLET = 'ccccccccccccccccccccccccccccccccccccccccccc';
+
+class FakeRedis {
+  constructor(
+    private readonly values: Record<string, string | null>,
+    private readonly lists: Record<string, string[]>
+  ) {}
+
+  async get(key: string) {
+    return this.values[key] ?? null;
+  }
+
+  async lrange(key: string, start: number, end: number) {
+    const list = this.lists[key] ?? [];
+    return list.slice(start, end + 1);
+  }
+
+  disconnect() {}
+}
+
+class FakeDb {
+  async query(sql: string, params: unknown[]) {
+    if (sql.includes('COUNT(*)')) {
+      return { rows: [{ count: 1 }] };
+    }
+
+    if (sql.includes('WHERE name = $1')) {
+      if (params[0] === 'alice') {
+        return {
+          rows: [
+            {
+              name: 'alice',
+              owner_address: WALLET,
+              transaction_id: TX_ID,
+              registered_at: '2026-04-10T00:00:00.000Z',
+              expires_at: null,
+              record_type: 'Register',
+              undername_limit: 10
+            }
+          ]
+        };
+      }
+
+      return { rows: [] };
+    }
+
+    return {
+      rows: [
+        {
+          name: 'alice',
+          owner_address: WALLET,
+          transaction_id: TX_ID,
+          registered_at: '2026-04-10T00:00:00.000Z',
+          expires_at: null,
+          record_type: 'Register',
+          undername_limit: 10
+        }
+      ]
+    };
+  }
+
+  async end() {}
+}
+
+const gateway = {
+  async getLatestBlocks(limit: number) {
+    return [
+      {
+        id: BLOCK_ID,
+        height: 100,
+        timestamp: 1712700000,
+        txCount: 3,
+        weaveSize: '123',
+        reward: '5'
+      }
+    ].slice(0, limit);
+  },
+  async getBlockById(id: string) {
+    return {
+      id,
+      height: 100,
+      timestamp: 1712700000,
+      txCount: 3,
+      weaveSize: '123',
+      reward: '5',
+      previousBlock: null
+    };
+  },
+  async getBlockByHeight(height: number) {
+    return {
+      id: BLOCK_ID,
+      height,
+      timestamp: 1712700000,
+      txCount: 3,
+      weaveSize: '123',
+      reward: '5',
+      previousBlock: null
+    };
+  },
+  async getBlockTransactions() {
+    return {
+      data: [
+        {
+          id: TX_ID,
+          owner: { address: WALLET },
+          recipient: null,
+          quantity: { ar: '0' },
+          fee: { ar: '0.01' },
+          data: { size: 42, type: 'text/plain' },
+          tags: [{ name: 'App-Name', value: 'Phin' }],
+          block: { height: 100, timestamp: 1712700000 }
+        }
+      ],
+      hasNextPage: false,
+      nextCursor: null
+    };
+  },
+  async getTransaction(id: string) {
+    if (id === 'ddddddddddddddddddddddddddddddddddddddddddd') {
+      return null;
+    }
+
+    return {
+      id,
+      owner: { address: WALLET },
+      recipient: null,
+      quantity: { ar: '0' },
+      fee: { ar: '0.01' },
+      data: { size: 42, type: 'text/plain' },
+      tags: [{ name: 'File-Name', value: 'hello.txt' }],
+      block: { id: BLOCK_ID, height: 100, timestamp: 1712700000 }
+    };
+  },
+  async getTransactionsByOwner(_owner: string, _page: number, limit: number) {
+    return {
+      data: [
+        {
+          id: TX_ID,
+          owner: { address: WALLET },
+          recipient: null,
+          quantity: { ar: '0' },
+          fee: { ar: '0.01' },
+          data: { size: 42, type: 'text/plain' },
+          tags: [{ name: 'File-Name', value: 'hello.txt' }],
+          block: { id: BLOCK_ID, height: 100, timestamp: 1712700000 }
+        },
+        {
+          id: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+          owner: { address: WALLET },
+          recipient: null,
+          quantity: { ar: '0' },
+          fee: { ar: '0.01' },
+          data: { size: 0, type: null },
+          tags: [],
+          block: null
+        }
+      ].slice(0, limit),
+      hasNextPage: false,
+      nextCursor: null
+    };
+  },
+  async getWallet(address: string) {
+    return {
+      address,
+      balance: '1000',
+      lastTransactionId: TX_ID
+    };
+  },
+  async getNetworkInfo() {
+    return {
+      height: 100,
+      weaveSize: '123',
+      peers: 25
+    };
+  }
+};
+
+async function createTestApp() {
+  const diagnosticsChannel = await import('node:diagnostics_channel');
+  const diagnostics = diagnosticsChannel.default as typeof diagnosticsChannel.default & {
+    tracingChannel?: (name: string) => {
+      traceSync<T>(fn: () => T): T;
+      tracePromise<T>(fn: () => Promise<T>): Promise<T>;
+      publish(message?: unknown): void;
+      hasSubscribers: boolean;
+    };
+  };
+
+  diagnostics.tracingChannel ??= () => ({
+    traceSync<T>(fn: () => T): T {
+      return fn();
+    },
+    async tracePromise<T>(fn: () => Promise<T>): Promise<T> {
+      return await fn();
+    },
+    publish() {},
+    hasSubscribers: false
+  });
+
+  const { buildApp } = await import('../src/app');
+
+  return await buildApp({
+    fastify: { logger: false },
+    redis: new FakeRedis(
+      {
+        [`block:${BLOCK_ID}`]: JSON.stringify({
+          id: BLOCK_ID,
+          height: 100,
+          timestamp: 1712700000,
+          txCount: 3,
+          weaveSize: '123',
+          reward: '5',
+          indexedAt: 1712700050,
+          transactions: [
+            {
+              id: TX_ID,
+              owner: { address: WALLET },
+              recipient: null,
+              quantity: { ar: '0' },
+              fee: { ar: '0.01' },
+              data: { size: 42, type: 'text/plain' },
+              tags: [{ name: 'App-Name', value: 'Phin' }],
+              block: { height: 100, timestamp: 1712700000 }
+            }
+          ]
+        }),
+        'network:stats': JSON.stringify({
+          blockHeight: 100,
+          weaveSize: '123',
+          lastBlockTimestamp: 1712700000,
+          approximateTPS: 1.5,
+          lastBlockTxCount: 3,
+          updatedAt: 1712700050
+        }),
+        'network:gateways': JSON.stringify([
+          {
+            url: 'https://gate.ar',
+            alive: true,
+            latencyMs: 100,
+            blockHeight: 100,
+            lastCheckedAt: 1712700050,
+            consecutiveFailures: 0,
+            status: 'healthy',
+            error: null
+          }
+        ])
+      },
+      {
+        'blocks:recent': [
+          JSON.stringify({
+            id: BLOCK_ID,
+            height: 100,
+            timestamp: 1712700000,
+            txCount: 3,
+            weaveSize: '123',
+            reward: '5'
+          })
+        ]
+      }
+    ) as any,
+    db: new FakeDb() as any,
+    gateway: gateway as any
+  });
+}
+
+test('lists cached recent blocks', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: '/v1/blocks' });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.data[0].id, BLOCK_ID);
+  await app.close();
+});
+
+test('reads block by height through fallback gateway', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: '/v1/blocks/height/100' });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().height, 100);
+  await app.close();
+});
+
+test('returns cached network stats', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: '/v1/network/stats' });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().approximateTPS, 1.5);
+  await app.close();
+});
+
+test('filters wallet files to data-bearing transactions', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: `/v1/wallets/${WALLET}/files` });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.data.length, 1);
+  assert.equal(payload.data[0].dataSize, 42);
+  await app.close();
+});
+
+test('returns ArNS detail from Postgres', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: '/v1/arns/alice' });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().name, 'alice');
+  await app.close();
+});
+
+test('resolves tx search and rejects keyword search as unsupported', async () => {
+  const app = await createTestApp();
+  const txResponse = await app.inject({
+    method: 'GET',
+    url: `/v1/search?q=${TX_ID}`
+  });
+  assert.equal(txResponse.statusCode, 200);
+  assert.equal(txResponse.json().type, 'transaction');
+
+  const keywordResponse = await app.inject({
+    method: 'GET',
+    url: '/v1/search?q=hello%20world'
+  });
+  assert.equal(keywordResponse.statusCode, 200);
+  assert.equal(keywordResponse.json().type, 'unsupported');
+  await app.close();
+});
+
+test('validates tx ids and returns 404 for missing ArNS names', async () => {
+  const app = await createTestApp();
+  const badTxResponse = await app.inject({
+    method: 'GET',
+    url: '/v1/transactions/not-a-txid'
+  });
+  assert.equal(badTxResponse.statusCode, 400);
+
+  const missingArnsResponse = await app.inject({
+    method: 'GET',
+    url: '/v1/arns/unknown'
+  });
+  assert.equal(missingArnsResponse.statusCode, 404);
+  await app.close();
+});

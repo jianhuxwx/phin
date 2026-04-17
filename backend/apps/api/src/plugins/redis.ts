@@ -7,12 +7,17 @@ declare module 'fastify' {
   }
 }
 
-export async function registerRedis(app: FastifyInstance, redisUrl: string): Promise<void> {
-  const client = createRedisClient(redisUrl);
+export async function registerRedis(
+  app: FastifyInstance,
+  redisUrl: string,
+  existingClient?: ReturnType<typeof createRedisClient>
+): Promise<void> {
+  const client = existingClient ?? createRedisClient(redisUrl);
   app.decorate('redis', client);
 
-  app.addHook('onClose', async () => {
-    client.disconnect();
-  });
+  if (!existingClient) {
+    app.addHook('onClose', async () => {
+      client.disconnect();
+    });
+  }
 }
-

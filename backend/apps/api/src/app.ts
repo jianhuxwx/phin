@@ -1,4 +1,7 @@
-import Fastify, { FastifyInstance, FastifyServerOptions } from 'fastify';
+import { ensureDiagnosticsChannelCompatibility } from './polyfills/diagnostics';
+import Fastify, { FastifyServerOptions } from 'fastify';
+import type Redis from 'ioredis';
+import type { Pool } from 'pg';
 import fastifySensible from '@fastify/sensible';
 import { config } from './config';
 import { registerCors } from './plugins/cors';
@@ -8,18 +11,29 @@ import { registerJwt } from './plugins/jwt';
 import { registerWebsocket } from './plugins/websocket';
 import { registerSwagger } from './plugins/swagger';
 import { registerRedis } from './plugins/redis';
+import { registerDatabase } from './plugins/database';
+import { registerGateway } from './plugins/gateway';
 import { registerRoutes } from './routes';
+import type { GatewayDataSource } from './clients/gateway';
 
-export async function buildApp(
-  options: FastifyServerOptions = {},
-): Promise<FastifyInstance> {
+ensureDiagnosticsChannelCompatibility();
+
+export interface BuildAppOptions {
+  fastify?: FastifyServerOptions;
+  redis?: Redis;
+  db?: Pool;
+  gateway?: GatewayDataSource;
+  enableWebsocket?: boolean;
+  enableSwagger?: boolean;
+}
+
+export async function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({
     logger: true,
-    ...options,
+    ...options.fastify
   });
 
-  app.register(fastifySensible);
-
+  await app.register(fastifySensible);
   await registerHelmet(app);
   await registerCors(app, config.corsOrigins);
   await registerRateLimit(app, {
@@ -27,9 +41,19 @@ export async function buildApp(
     timeWindow: config.rateLimitWindowMs,
   });
   await registerJwt(app, config.jwtSecret);
-  await registerWebsocket(app);
-  await registerSwagger(app);
-  await registerRedis(app, config.redisUrl);
+  if (options.enableWebsocket ?? true) {
+    await registerWebsocket(app);
+  }
+  if (options.enableSwagger ?? true) {
+    await registerSwagger(app);
+  }
+  await registerRedis(app, config.redisUrl, options.redis);
+  await registerDatabase(app, config.databaseUrl, options.db);
+  await registerGateway(
+    app,
+    [config.gateArUrl, ...config.gateArFallbackUrls],
+    options.gateway
+  );
 
   app.get('/health', async () => {
     return {
@@ -38,16 +62,19 @@ export async function buildApp(
     };
   });
 
-  await registerRoutes(app);
+  await registerRoutes(app, {
+    enableWebsocket: options.enableWebsocket ?? true
+  });
 
   app.setErrorHandler((error, request, reply) => {
-    const statusCode = error.statusCode ?? 500;
+    const safeError = error as { statusCode?: number; message?: string };
+    const statusCode = safeError.statusCode ?? 500;
+    request.log.error({ err: error }, 'Request failed');
     reply.status(statusCode).send({
-      error: error.message || 'Internal Server Error',
+      error: safeError.message || 'Internal Server Error',
       statusCode,
     });
   });
 
   return app;
 }
-

@@ -1,94 +1,3 @@
-export interface ArweaveTag {
-  name: string;
-  value: string;
-}
-
-export interface ArweaveOwner {
-  address: string;
-}
-
-export interface ArweaveBlockRef {
-  id?: string | null;
-  height: number;
-  timestamp: number;
-}
-
-export interface ArweaveDataInfo {
-  size: number;
-  type: string | null;
-}
-
-export interface ArweaveTransaction {
-  id: string;
-  anchor?: string;
-  signature?: string;
-  owner: ArweaveOwner;
-  recipient?: string | null;
-  quantity?: {
-    ar: string;
-  } | null;
-  fee?: {
-    ar: string;
-  } | null;
-  data: ArweaveDataInfo;
-  tags: ArweaveTag[];
-  block: ArweaveBlockRef | null;
-}
-
-export interface ArweaveBlock {
-  id: string;
-  height: number;
-  timestamp: number;
-  txCount: number;
-  weaveSize: string;
-  reward: string;
-  miner?: string | null;
-  previousBlock?: string | null;
-}
-
-export interface ArweaveWallet {
-  address: string;
-  balance: string;
-  lastTransactionId: string | null;
-}
-
-export interface ArNSRecord {
-  name: string;
-  ownerAddress: string;
-  transactionId: string;
-  registeredAt: Date;
-  expiresAt: Date | null;
-  recordType: string;
-  undernameLimit: number;
-  rawTags: Record<string, string>;
-}
-
-export interface AOProcess {}
-
-export interface AOMessage {}
-
-export interface NetworkStats {
-  blockHeight: number;
-  weaveSize: string;
-  lastBlockTimestamp: number;
-  approximateTPS: number;
-  lastBlockTxCount: number;
-  updatedAt: number;
-}
-
-export type GatewayHealthStatus = 'healthy' | 'degraded' | 'down';
-
-export interface GatewayStatus {
-  url: string;
-  alive: boolean;
-  latencyMs: number;
-  blockHeight: number | null;
-  lastCheckedAt: number;
-  consecutiveFailures: number;
-  status: GatewayHealthStatus;
-  error: string | null;
-}
-
 export interface PaginationMeta {
   page: number;
   limit: number;
@@ -101,9 +10,74 @@ export interface PaginatedResponse<T> {
   pagination: PaginationMeta;
 }
 
-export interface ApiError {
-  error: string;
-  statusCode: number;
+export interface GatewayBlockRef {
+  id?: string | null;
+  height: number;
+  timestamp: number;
+}
+
+export interface GatewayTag {
+  name: string;
+  value: string;
+}
+
+export interface GatewayTransaction {
+  id: string;
+  anchor?: string;
+  signature?: string;
+  owner: {
+    address: string;
+  };
+  recipient?: string | null;
+  quantity?: {
+    ar: string;
+  } | null;
+  fee?: {
+    ar: string;
+  } | null;
+  data: {
+    size: number;
+    type: string | null;
+  };
+  tags: GatewayTag[];
+  block: GatewayBlockRef | null;
+}
+
+export interface GatewayBlock {
+  id: string;
+  height: number;
+  timestamp: number;
+  txCount: number;
+  weaveSize: string;
+  reward: string;
+  miner?: string | null;
+  previousBlock?: string | null;
+}
+
+export interface GatewayWallet {
+  address: string;
+  balance: string;
+  lastTransactionId: string | null;
+}
+
+export interface NetworkStats {
+  blockHeight: number;
+  weaveSize: string;
+  lastBlockTimestamp: number;
+  approximateTPS: number;
+  lastBlockTxCount: number;
+  updatedAt: number;
+}
+
+export interface GatewayStatus {
+  url: string;
+  alive: boolean;
+  latencyMs: number;
+  blockHeight: number | null;
+  lastCheckedAt: number;
+  consecutiveFailures: number;
+  status: 'healthy' | 'degraded' | 'down';
+  error: string | null;
 }
 
 export interface ApiBlockSummary {
@@ -128,7 +102,7 @@ export interface ApiTransactionSummary {
   quantityAr: string;
   dataSize: number;
   contentType: string | null;
-  block: ArweaveBlockRef | null;
+  block: GatewayBlockRef | null;
   appName: string | null;
   fileName: string | null;
 }
@@ -136,7 +110,7 @@ export interface ApiTransactionSummary {
 export interface ApiTransactionDetail extends ApiTransactionSummary {
   anchor: string | null;
   signature: string | null;
-  tags: ArweaveTag[];
+  tags: GatewayTag[];
 }
 
 export interface ApiTransactionStatus {
@@ -154,7 +128,7 @@ export interface ApiWalletSummary {
   hasActivity: boolean;
 }
 
-export interface ApiWalletFile extends ApiTransactionSummary {}
+export type ApiWalletFile = ApiTransactionSummary;
 
 export interface ApiArnsRecord {
   name: string;
@@ -166,32 +140,9 @@ export interface ApiArnsRecord {
   undernameLimit: number;
 }
 
-export interface ApiSearchResolution {
-  type:
-    | 'transaction'
-    | 'wallet'
-    | 'block'
-    | 'arns'
-    | 'unsupported'
-    | 'not_found';
+export interface SearchResult {
+  type: 'transaction' | 'wallet' | 'block' | 'arns' | 'unsupported' | 'not_found';
   query: string;
   target: string | null;
-}
-
-export interface SearchResult extends ApiSearchResolution {
   detail?: Record<string, unknown>;
 }
-
-export type WSEventType =
-  | 'new_block'
-  | 'new_transaction'
-  | 'stats_update'
-  | 'gateway_status';
-
-export interface WSEvent<T = unknown> {
-  type: WSEventType;
-  timestamp?: number;
-  data: T;
-}
-
-export interface ApiKey {}
