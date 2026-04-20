@@ -319,6 +319,9 @@ test('paginates gateway blocks beyond page one', async () => {
   assert.equal(response.statusCode, 200);
   const payload = response.json();
   assert.equal(payload.data[0].height, 99);
+  assert.equal(payload.data[0].txCount, 1);
+  assert.equal(payload.data[0].weaveSize, '120');
+  assert.equal(payload.data[0].reward, '4');
   assert.equal(payload.pagination.nextCursor, 'blocks-cursor-2');
   await app.close();
 });
@@ -328,6 +331,57 @@ test('reads block by height through fallback gateway', async () => {
   const response = await app.inject({ method: 'GET', url: '/v1/blocks/height/100' });
   assert.equal(response.statusCode, 200);
   assert.equal(response.json().height, 100);
+  await app.close();
+});
+
+test('falls back to gateway block transactions when cached block omits them', async () => {
+  const buildApp = await loadBuildApp();
+  const app = await buildApp({
+    fastify: { logger: false },
+    redis: new FakeRedis(
+      {
+        [`block:${BLOCK_ID}`]: JSON.stringify({
+          id: BLOCK_ID,
+          height: 100,
+          timestamp: 1712700000,
+          txCount: 3,
+          weaveSize: '123',
+          reward: '5',
+          indexedAt: 1712700050,
+          transactions: []
+        })
+      },
+      {}
+    ) as any,
+    db: new FakeDb() as any,
+    gateway: gateway as any,
+    enableSwagger: false,
+    enableWebsocket: false
+  });
+
+  const response = await app.inject({ method: 'GET', url: `/v1/blocks/${BLOCK_ID}/transactions` });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.data.length, 1);
+  assert.equal(payload.data[0].id, TX_ID);
+  await app.close();
+});
+
+test('accepts long Arweave block ids on block detail routes', async () => {
+  const app = await createTestApp();
+  const longBlockId = 'WZuQo33XqnuA3iFsHFwl0rU4azwTZuVgTCoFcoyKdN4y1cCRKGu1jxF8gkb0cMPS';
+
+  const detailResponse = await app.inject({
+    method: 'GET',
+    url: `/v1/blocks/${longBlockId}`
+  });
+  assert.equal(detailResponse.statusCode, 200);
+
+  const txResponse = await app.inject({
+    method: 'GET',
+    url: `/v1/blocks/${longBlockId}/transactions`
+  });
+  assert.equal(txResponse.statusCode, 200);
   await app.close();
 });
 
@@ -389,6 +443,31 @@ test('resolves tx search and rejects keyword search as unsupported', async () =>
   });
   assert.equal(keywordResponse.statusCode, 200);
   assert.equal(keywordResponse.json().type, 'unsupported');
+  await app.close();
+});
+
+test('resolves long base64url hashes as blocks before ArNS', async () => {
+  const app = await createTestApp();
+  const longBlockId = 'WZuQo33XqnuA3iFsHFwl0rU4azwTZuVgTCoFcoyKdN4y1cCRKGu1jxF8gkb0cMPS';
+  const response = await app.inject({
+    method: 'GET',
+    url: `/v1/search?q=${longBlockId}`
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().type, 'block');
+  assert.equal(response.json().target, longBlockId);
+  await app.close();
+});
+
+test('resolves block heights to block routes by height', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({
+    method: 'GET',
+    url: '/v1/search?q=100'
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().type, 'block');
+  assert.equal(response.json().target, '100');
   await app.close();
 });
 

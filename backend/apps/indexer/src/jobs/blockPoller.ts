@@ -162,12 +162,15 @@ const GET_LATEST_BLOCK_INFO = /* GraphQL */ `
 
 const GET_BLOCK_BY_HEIGHT = /* GraphQL */ `
   query GetBlockByHeight($height: Int!) {
-    block(height: $height) {
-      id
-      height
-      timestamp
-      weaveSize
-      reward
+    blocks(first: 1, sort: HEIGHT_DESC, height: { min: $height, max: $height }) {
+      edges {
+        node {
+          id
+          height
+          timestamp
+          previous
+        }
+      }
     }
   }
 `;
@@ -222,34 +225,39 @@ export async function getBlockInfoByHeight(
   height: number
 ): Promise<LatestBlockInfo> {
   interface ResponseShape {
-    block: {
-      id: string | null;
-      height: number;
-      timestamp: number | null;
-      weaveSize: string | null;
-      reward: string | null;
-    } | null;
+    blocks: {
+      edges: Array<{
+        node: {
+          id: string | null;
+          height: number;
+          timestamp: number | null;
+          previous: string | null;
+        };
+      }>;
+    };
   }
 
   const data = await client.query<ResponseShape>(GET_BLOCK_BY_HEIGHT, { height });
+  const edge = data.blocks.edges[0];
+  const block = edge?.node;
 
-  if (!data.block || !data.block.id || data.block.timestamp == null) {
+  if (!block || !block.id || block.timestamp == null) {
     throw new Error(
       `[BlockPoller] Block lookup by height failed or returned incomplete data (height=${height})`
     );
   }
 
   return {
-    height: data.block.height,
-    id: data.block.id,
-    timestamp: data.block.timestamp,
+    height: block.height,
+    id: block.id,
+    timestamp: block.timestamp,
     // These extended fields are not exposed by all gateway schemas. Default to
     // zero-like values; they can be populated from a richer endpoint in the future.
-    weaveSize: data.block.weaveSize ?? '0',
+    weaveSize: '0',
     blockSize: '0',
     txCount: 0,
-    reward: data.block.reward ?? '0',
-    previousBlock: ''
+    reward: '0',
+    previousBlock: block.previous ?? ''
   };
 }
 

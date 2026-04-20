@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { ApiTransactionSummary } from '@/lib/types'
-import { formatBytes, formatAR } from '@/lib/format'
+import { formatBytes } from '@/lib/format'
 import Hash from '@/components/ui/Hash'
 import Badge from '@/components/ui/Badge'
 import RelativeTime from '@/components/ui/RelativeTime'
@@ -16,11 +16,11 @@ export default function TransactionRow({ tx }: TransactionRowProps) {
         <Hash value={tx.id} href={`/tx/${tx.id}`} />
       </td>
       <td>
-        <Hash value={tx.owner} href={`/wallet/${tx.owner}`} />
+        <Hash value={tx.ownerAddress} href={`/wallet/${tx.ownerAddress}`} />
       </td>
       <td>
-        {tx.target ? (
-          <Hash value={tx.target} href={`/wallet/${tx.target}`} />
+        {tx.recipient ? (
+          <Hash value={tx.recipient} href={`/wallet/${tx.recipient}`} />
         ) : (
           <span className="text-tx-muted text-sm">—</span>
         )}
@@ -34,7 +34,7 @@ export default function TransactionRow({ tx }: TransactionRowProps) {
         )}
       </td>
       <td className="text-tx-muted text-sm">
-        <RelativeTime timestamp={tx.timestamp} />
+        {tx.block ? <RelativeTime timestamp={tx.block.timestamp} /> : 'Pending'}
       </td>
     </tr>
   )

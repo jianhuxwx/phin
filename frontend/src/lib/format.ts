@@ -1,6 +1,11 @@
 /** Format a Winston value (string) to AR with up to 6 decimal places */
-export function formatAR(winston: string): string {
-  const ar = Number(BigInt(winston || '0')) / 1e12
+export function formatAR(value: string): string {
+  const raw = (value || '0').trim()
+  const ar = raw.includes('.')
+    ? Number(raw)
+    : Number(BigInt(raw || '0')) / 1e12
+
+  if (!Number.isFinite(ar)) return '0 AR'
   if (ar === 0) return '0 AR'
   if (ar < 0.000001) return '<0.000001 AR'
   return `${ar.toFixed(6).replace(/\.?0+$/, '')} AR`

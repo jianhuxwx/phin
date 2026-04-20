@@ -6,9 +6,15 @@ import { BlocksService } from './blocks';
 import { TransactionsService } from './transactions';
 import { WalletsService } from './wallets';
 
-export type QueryType = 'transaction_or_wallet' | 'block_height' | 'arns' | 'keyword';
+export type QueryType =
+  | 'transaction_or_wallet'
+  | 'block_id'
+  | 'block_height'
+  | 'arns'
+  | 'keyword';
 
 const TX_OR_WALLET_PATTERN = /^[a-zA-Z0-9_-]{43}$/;
+const BLOCK_ID_PATTERN = /^[a-zA-Z0-9_-]{44,128}$/;
 const BLOCK_HEIGHT_PATTERN = /^\d+$/;
 const ARNS_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,50}$/;
 
@@ -17,6 +23,10 @@ export function detectQueryType(query: string): QueryType {
 
   if (TX_OR_WALLET_PATTERN.test(trimmed)) {
     return 'transaction_or_wallet';
+  }
+
+  if (BLOCK_ID_PATTERN.test(trimmed)) {
+    return 'block_id';
   }
 
   if (BLOCK_HEIGHT_PATTERN.test(trimmed)) {
@@ -46,6 +56,22 @@ export class SearchService {
       try {
         const height = Number(trimmed);
         const block = await this.blocksService.getByHeight(height);
+        return {
+          type: 'block',
+          query: trimmed,
+          target: trimmed,
+          detail: block as unknown as Record<string, unknown>
+        };
+      } catch (error) {
+        if (!(error instanceof ApiHttpError)) {
+          throw error;
+        }
+      }
+    }
+
+    if (queryType === 'block_id') {
+      try {
+        const block = await this.blocksService.getById(trimmed);
         return {
           type: 'block',
           query: trimmed,

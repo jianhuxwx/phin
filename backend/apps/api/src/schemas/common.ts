@@ -3,6 +3,11 @@ export const txIdSchema = {
   pattern: '^[a-zA-Z0-9_-]{43}$'
 };
 
+export const blockIdSchema = {
+  type: 'string',
+  pattern: '^[a-zA-Z0-9_-]{43,128}$'
+};
+
 export const walletAddressSchema = {
   type: 'string',
   pattern: '^[a-zA-Z0-9_-]{43}$'

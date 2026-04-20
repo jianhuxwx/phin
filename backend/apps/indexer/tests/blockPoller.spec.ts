@@ -4,6 +4,7 @@ import {
   computeApproximateTPS,
   createGatewayHttpClient,
   getLatestBlockInfo,
+  getBlockInfoByHeight,
   cacheBlock,
   cacheTransactions,
   cacheNetworkStats,
@@ -73,6 +74,44 @@ async function runUnitTests() {
     const txCounts = [5, 10, 15]; // total = 30, delta = 20 -> TPS = 1.5
     const tps = computeApproximateTPS(timestamps, txCounts);
     assert.ok(Math.abs(tps - 1.5) < 1e-9);
+  });
+
+  await test('getBlockInfoByHeight uses blocks query shape supported by gateway', async () => {
+    let capturedQuery = '';
+    let capturedVariables: Record<string, unknown> | undefined;
+
+    const client = {
+      async query<T>(gql: string, variables?: Record<string, unknown>): Promise<T> {
+        capturedQuery = gql;
+        capturedVariables = variables;
+
+        return {
+          blocks: {
+            edges: [
+              {
+                node: {
+                  id: 'block-123',
+                  height: 123,
+                  timestamp: 1712700000,
+                  previous: 'block-122'
+                }
+              }
+            ]
+          }
+        } as T;
+      }
+    };
+
+    const info = await getBlockInfoByHeight(client, 123);
+
+    assert.match(capturedQuery, /blocks\(first: 1, sort: HEIGHT_DESC, height: \{ min: \$height, max: \$height \}\)/);
+    assert.deepEqual(capturedVariables, { height: 123 });
+    assert.equal(info.id, 'block-123');
+    assert.equal(info.height, 123);
+    assert.equal(info.timestamp, 1712700000);
+    assert.equal(info.previousBlock, 'block-122');
+    assert.equal(info.weaveSize, '0');
+    assert.equal(info.reward, '0');
   });
 }
 

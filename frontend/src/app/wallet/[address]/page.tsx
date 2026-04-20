@@ -8,7 +8,6 @@ import StatCard from '@/components/ui/StatCard'
 import TransactionList from '@/components/transactions/TransactionList'
 import Pagination from '@/components/ui/Pagination'
 import { Skeleton } from '@/components/ui/Skeleton'
-import RelativeTime from '@/components/ui/RelativeTime'
 import Badge from '@/components/ui/Badge'
 
 type Tab = 'transactions' | 'files' | 'arns'
@@ -52,11 +51,37 @@ export default function WalletPage({ params }: WalletPageProps) {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
         <StatCard label="Balance" value={wallet ? formatAR(wallet.balance) : '—'} />
-        <StatCard label="Transactions" value={wallet ? formatNumber(wallet.txCount) : '—'} />
+        <StatCard label="ArNS Names" value={wallet ? formatNumber(wallet.arnsCount) : '—'} />
         <StatCard
-          label="Last Activity"
-          value={wallet?.lastActivity ? <RelativeTime timestamp={wallet.lastActivity} /> as unknown as string : '—'}
+          label="Activity"
+          value={wallet ? (wallet.hasActivity ? 'Active' : 'No activity') : '—'}
         />
+      </div>
+
+      <div className="bg-bg-card border border-bg-border rounded-lg p-5 mb-6">
+        <h2 className="text-xs font-semibold text-tx-muted uppercase tracking-wider mb-4">Wallet Details</h2>
+        {isLoading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-5 w-full" />)}
+          </div>
+        ) : wallet ? (
+          <dl className="grid grid-cols-1 gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 py-2 border-b border-bg-border">
+              <dt className="text-xs text-tx-muted uppercase tracking-wider w-36 shrink-0">Last Transaction</dt>
+              <dd className="text-sm text-tx-primary">
+                {wallet.lastTransactionId ? (
+                  <Hash value={wallet.lastTransactionId} href={`/tx/${wallet.lastTransactionId}`} head={16} tail={12} />
+                ) : (
+                  <span className="text-tx-muted">—</span>
+                )}
+              </dd>
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 py-2">
+              <dt className="text-xs text-tx-muted uppercase tracking-wider w-36 shrink-0">Recent Transactions</dt>
+              <dd className="text-sm text-tx-primary">{txData ? formatNumber(txData.data.length) : '—'}</dd>
+            </div>
+          </dl>
+        ) : null}
       </div>
 
       {/* Tabs */}
@@ -125,8 +150,8 @@ export default function WalletPage({ params }: WalletPageProps) {
                     ))}
                   </tr>
                 ))
-              ) : arnsData?.data.length ? (
-                arnsData.data.map((record) => (
+              ) : arnsData?.length ? (
+                arnsData.map((record) => (
                   <tr key={record.name}>
                     <td>
                       <a href={`/arns/${record.name}`} className="text-accent hover:text-accent-hover font-mono text-sm transition-colors">

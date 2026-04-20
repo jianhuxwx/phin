@@ -58,9 +58,9 @@ export default function BlockPage({ params }: BlockPageProps) {
           <dl className="grid grid-cols-1 gap-3">
             {[
               { label: 'Block Hash', value: <Hash value={block.id} head={16} tail={12} /> },
-              { label: 'Previous Block', value: <Hash value={block.previousBlock} href={`/block/${block.previousBlock}`} head={16} tail={12} /> },
+              { label: 'Previous Block', value: block.previousBlock ? <Hash value={block.previousBlock} href={`/block/${block.previousBlock}`} head={16} tail={12} /> : <span className="text-tx-muted">—</span> },
               { label: 'Timestamp', value: formatDate(block.timestamp) },
-              { label: 'Indexed At', value: formatDate(block.indexedAt / 1000) },
+              { label: 'Indexed At', value: block.indexedAt ? formatDate(block.indexedAt / 1000) : <span className="text-tx-muted">Live gateway</span> },
             ].map(({ label, value }) => (
               <div key={label} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 py-2 border-b border-bg-border last:border-0">
                 <dt className="text-xs text-tx-muted uppercase tracking-wider w-36 shrink-0">{label}</dt>

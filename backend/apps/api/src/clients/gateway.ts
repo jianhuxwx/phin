@@ -317,6 +317,29 @@ function mapBlock(block: any): ArweaveBlock {
   };
 }
 
+interface GatewayBlockMetadata {
+  txCount: number;
+  weaveSize: string;
+  reward: string;
+  miner: string | null;
+}
+
+function parseBlockMetadata(payload: any): GatewayBlockMetadata {
+  const txs = Array.isArray(payload?.txs) ? payload.txs : [];
+
+  return {
+    txCount: toNumber(payload?.tx_count ?? payload?.txCount ?? txs.length, txs.length),
+    weaveSize: toStringNumber(payload?.weave_size ?? payload?.weaveSize, '0'),
+    reward: toStringNumber(payload?.reward, '0'),
+    miner:
+      typeof payload?.reward_addr === 'string'
+        ? payload.reward_addr
+        : typeof payload?.miner === 'string'
+          ? payload.miner
+          : null
+  };
+}
+
 function mapTransaction(node: GatewayTransactionNode): ArweaveTransaction {
   return {
     id: node.id,
@@ -401,6 +424,45 @@ export class GatewayClient implements GatewayDataSource {
     throw lastError ?? new Error('Gateway request failed');
   }
 
+  private async fetchBlockMetadata(path: string): Promise<GatewayBlockMetadata | null> {
+    for (const url of this.urls) {
+      try {
+        const response = await fetch(`${url}${path}`, {
+          headers: { accept: 'application/json' },
+          signal: AbortSignal.timeout(5_000)
+        });
+
+        if (!response.ok) {
+          continue;
+        }
+
+        return parseBlockMetadata(await response.json());
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  private async enrichBlock(block: ArweaveBlock): Promise<ArweaveBlock> {
+    const metadata =
+      (await this.fetchBlockMetadata(`/block/hash/${block.id}`)) ??
+      (await this.fetchBlockMetadata(`/block/height/${block.height}`));
+
+    if (!metadata) {
+      return block;
+    }
+
+    return {
+      ...block,
+      txCount: metadata.txCount,
+      weaveSize: metadata.weaveSize,
+      reward: metadata.reward,
+      miner: metadata.miner ?? block.miner ?? null
+    };
+  }
+
   async getLatestBlocksPage(page: number, limit: number): Promise<GatewayBlocksPage> {
     let cursor: string | null = null;
     let currentPage = 1;
@@ -428,9 +490,10 @@ export class GatewayClient implements GatewayDataSource {
     }
 
     const edges = response.blocks?.edges ?? [];
+    const baseBlocks = edges.map((edge) => mapBlock(edge.node));
 
     return {
-      data: edges.map((edge) => mapBlock(edge.node)),
+      data: await Promise.all(baseBlocks.map((block) => this.enrichBlock(block))),
       hasNextPage: response.blocks?.pageInfo?.hasNextPage ?? false,
       nextCursor: edges[edges.length - 1]?.cursor ?? null
     };
@@ -440,7 +503,7 @@ export class GatewayClient implements GatewayDataSource {
     const response = await this.request<any>((client) =>
       client.request(GET_BLOCK_BY_ID, { id })
     );
-    return response.block ? mapBlock(response.block) : null;
+    return response.block ? await this.enrichBlock(mapBlock(response.block)) : null;
   }
 
   async getBlockByHeight(height: number): Promise<ArweaveBlock | null> {
@@ -448,7 +511,7 @@ export class GatewayClient implements GatewayDataSource {
       client.request(GET_BLOCK_BY_HEIGHT, { height })
     );
     const edge = response.blocks?.edges?.[0];
-    return edge?.node ? mapBlock(edge.node) : null;
+    return edge?.node ? await this.enrichBlock(mapBlock(edge.node)) : null;
   }
 
   async getBlockTransactions(blockId: string, limit: number): Promise<GatewayTransactionsPage> {

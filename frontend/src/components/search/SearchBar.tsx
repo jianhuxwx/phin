@@ -47,9 +47,11 @@ export default function SearchBar() {
       }
     } catch {
       // Try direct navigation as fallback
-      if (/^\d+$/.test(q.trim())) router.push(`/block/${q.trim()}`)
-      else if (q.trim().length === 43) router.push(`/tx/${q.trim()}`)
-      else router.push(`/arns/${q.trim()}`)
+      const trimmed = q.trim()
+      if (/^\d+$/.test(trimmed)) router.push(`/block/${trimmed}`)
+      else if (/^[a-zA-Z0-9_-]{43}$/.test(trimmed)) router.push(`/tx/${trimmed}`)
+      else if (/^[a-zA-Z0-9_-]{44,128}$/.test(trimmed)) router.push(`/block/${trimmed}`)
+      else router.push(`/arns/${trimmed}`)
     } finally {
       setLoading(false)
     }

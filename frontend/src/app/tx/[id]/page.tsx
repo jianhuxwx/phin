@@ -30,8 +30,8 @@ export default function TxPage({ params }: TxPageProps) {
         <h1 className="text-xl font-bold text-tx-primary">Transaction</h1>
         {tx ? (
           <Badge
-            label={tx.status.confirmed ? `${tx.status.confirmations} confirmations` : 'Pending'}
-            variant={tx.status.confirmed ? 'confirmed' : 'pending'}
+            label={tx.block ? 'Confirmed' : 'Pending'}
+            variant={tx.block ? 'confirmed' : 'pending'}
           />
         ) : null}
       </div>
@@ -46,10 +46,10 @@ export default function TxPage({ params }: TxPageProps) {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Quantity" value={tx ? formatAR(tx.quantity) : '—'} />
-        <StatCard label="Fee" value={tx ? formatAR(tx.fee) : '—'} />
+        <StatCard label="Quantity" value={tx ? formatAR(tx.quantityAr) : '—'} />
+        <StatCard label="Fee" value={tx ? formatAR(tx.feeAr) : '—'} />
         <StatCard label="Data Size" value={tx ? formatBytes(tx.dataSize) : '—'} />
-        <StatCard label="Block" value={tx ? `#${tx.blockHeight}` : '—'} />
+        <StatCard label="Block" value={tx?.block ? `#${tx.block.height}` : 'Pending'} />
       </div>
 
       {/* Detail card */}
@@ -62,10 +62,10 @@ export default function TxPage({ params }: TxPageProps) {
         ) : tx ? (
           <dl className="grid grid-cols-1 gap-0">
             {[
-              { label: 'From', value: <Hash value={tx.owner} href={`/wallet/${tx.owner}`} head={16} tail={12} /> },
-              { label: 'To', value: tx.target ? <Hash value={tx.target} href={`/wallet/${tx.target}`} head={16} tail={12} /> : <span className="text-tx-muted">—</span> },
-              { label: 'Block', value: <a href={`/block/${tx.blockId}`} className="hash text-accent hover:text-accent-hover">{tx.blockId.slice(0, 16)}…</a> },
-              { label: 'Timestamp', value: formatDate(tx.timestamp) },
+              { label: 'From', value: <Hash value={tx.ownerAddress} href={`/wallet/${tx.ownerAddress}`} head={16} tail={12} /> },
+              { label: 'To', value: tx.recipient ? <Hash value={tx.recipient} href={`/wallet/${tx.recipient}`} head={16} tail={12} /> : <span className="text-tx-muted">—</span> },
+              { label: 'Block', value: tx.block?.id ? <a href={`/block/${tx.block.id}`} className="hash text-accent hover:text-accent-hover">{tx.block.id.slice(0, 16)}…</a> : <span className="text-tx-muted">Pending</span> },
+              { label: 'Timestamp', value: tx.block ? formatDate(tx.block.timestamp) : 'Pending' },
               { label: 'Content Type', value: tx.contentType ? <Badge label={tx.contentType} /> : <span className="text-tx-muted">—</span> },
               { label: 'App', value: tx.appName ?? <span className="text-tx-muted">—</span> },
             ].map(({ label, value }) => (

@@ -4,15 +4,15 @@ const wsRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   app.get(
     '/ws',
     { websocket: true },
-    (connection /*, request */) => {
-      connection.socket.send(
+    (socket /*, request */) => {
+      socket.send(
         JSON.stringify({
           type: 'connected',
           channels: []
         })
       );
 
-      connection.socket.on('message', (message: unknown) => {
+      socket.on('message', (message: unknown) => {
         try {
           const parsed = JSON.parse(String(message));
           console.log('Received WS message', parsed);

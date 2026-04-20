@@ -4,6 +4,7 @@ import type {
   ApiBlockDetail,
   ApiTransactionSummary,
   ApiTransactionDetail,
+  ApiTransactionStatus,
   ApiWalletSummary,
   ApiNetworkStats,
   ApiArnsRecord,
@@ -40,7 +41,7 @@ export const getTx = (id: string) =>
   apiFetch<ApiTransactionDetail>(`/v1/transactions/${id}`)
 
 export const getTxStatus = (id: string) =>
-  apiFetch<{ confirmed: boolean; confirmations: number }>(`/v1/transactions/${id}/status`)
+  apiFetch<ApiTransactionStatus>(`/v1/transactions/${id}/status`)
 
 // Wallets
 export const getWallet = (address: string) =>
@@ -57,7 +58,7 @@ export const getWalletFiles = (address: string, page = 1, limit = 20) =>
   )
 
 export const getWalletArns = (address: string) =>
-  apiFetch<PaginatedResponse<ApiArnsRecord>>(`/v1/wallets/${address}/arns`)
+  apiFetch<ApiArnsRecord[]>(`/v1/wallets/${address}/arns`)
 
 // Search
 export const search = (q: string) =>

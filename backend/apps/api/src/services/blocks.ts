@@ -69,14 +69,18 @@ export class BlocksService {
 
   async getTransactions(id: string, limit: number) {
     const cached = await this.cache.getBlockById(id);
-    if (cached) {
-      const transactions = (cached.transactions ?? []).slice(0, limit).map(toTransactionSummary);
+    const cachedTransactions = cached?.transactions ?? [];
+    const shouldUseCachedTransactions =
+      cached != null && (cachedTransactions.length > 0 || cached.txCount === 0);
+
+    if (shouldUseCachedTransactions) {
+      const transactions = cachedTransactions.slice(0, limit).map(toTransactionSummary);
       return {
         data: transactions,
         pagination: {
           page: 1,
           limit,
-          hasNextPage: (cached.transactions?.length ?? 0) > limit
+          hasNextPage: cachedTransactions.length > limit
         }
       };
     }

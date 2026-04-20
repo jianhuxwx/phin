@@ -33,36 +33,40 @@ export interface ApiBlockDetail extends ApiBlockSummary {
 
 export interface ApiTransactionSummary {
   id: string
-  blockHeight: number
-  blockId: string
-  owner: string
-  target: string | null
-  quantity: string
-  fee: string
+  ownerAddress: string
+  recipient: string | null
+  feeAr: string
+  quantityAr: string
   dataSize: number
   contentType: string | null
+  block: {
+    id?: string | null
+    height: number
+    timestamp: number
+  } | null
   appName: string | null
-  timestamp: number
+  fileName: string | null
 }
 
 export interface ApiTransactionDetail extends ApiTransactionSummary {
+  anchor: string | null
+  signature: string | null
   tags: Tag[]
-  data: {
-    size: number
-    type: string | null
-  }
-  status: {
-    confirmed: boolean
-    confirmations: number
-  }
+}
+
+export interface ApiTransactionStatus {
+  id: string
+  confirmed: boolean
+  blockHeight: number | null
+  blockTimestamp: number | null
 }
 
 export interface ApiWalletSummary {
   address: string
   balance: string
-  balanceAr: string
-  txCount: number
-  lastActivity: number | null
+  lastTransactionId: string | null
+  arnsCount: number
+  hasActivity: boolean
 }
 
 export interface ApiNetworkStats {
