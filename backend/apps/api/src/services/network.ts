@@ -27,6 +27,11 @@ export class NetworkService {
   }
 
   async getGateways(): Promise<GatewayStatus[]> {
-    return await this.cache.getGatewayStatuses();
+    const cached = await this.cache.getGatewayStatuses();
+    if (cached.length > 0) {
+      return cached;
+    }
+
+    return await this.gateway.getGatewayStatuses();
   }
 }

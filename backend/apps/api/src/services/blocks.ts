@@ -26,14 +26,15 @@ export class BlocksService {
       }
     }
 
-    const blocks = await this.gateway.getLatestBlocks(limit);
+    const blocks = await this.gateway.getLatestBlocksPage(page, limit);
 
     return {
-      data: blocks.map(toBlockSummary),
+      data: blocks.data.map(toBlockSummary),
       pagination: {
         page,
         limit,
-        hasNextPage: blocks.length === limit
+        hasNextPage: blocks.hasNextPage,
+        nextCursor: blocks.nextCursor
       }
     };
   }

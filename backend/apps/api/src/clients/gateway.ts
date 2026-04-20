@@ -2,6 +2,7 @@ import type { GraphQLClient } from 'graphql-request';
 import { GatewayPool } from 'phin-gateway';
 import type {
   GatewayBlock as ArweaveBlock,
+  GatewayStatus,
   GatewayTransaction as ArweaveTransaction,
   GatewayWallet as ArweaveWallet
 } from '../contracts';
@@ -66,8 +67,14 @@ export interface GatewayTransactionsPage {
   nextCursor: string | null;
 }
 
+export interface GatewayBlocksPage {
+  data: ArweaveBlock[];
+  hasNextPage: boolean;
+  nextCursor: string | null;
+}
+
 export interface GatewayDataSource {
-  getLatestBlocks(limit: number): Promise<ArweaveBlock[]>;
+  getLatestBlocksPage(page: number, limit: number): Promise<GatewayBlocksPage>;
   getBlockById(id: string): Promise<ArweaveBlock | null>;
   getBlockByHeight(height: number): Promise<ArweaveBlock | null>;
   getBlockTransactions(blockId: string, limit: number): Promise<GatewayTransactionsPage>;
@@ -79,6 +86,24 @@ export interface GatewayDataSource {
   ): Promise<GatewayTransactionsPage>;
   getWallet(address: string): Promise<ArweaveWallet>;
   getNetworkInfo(): Promise<{ height: number; weaveSize: string; peers: number }>;
+  getGatewayStatuses(): Promise<GatewayStatus[]>;
+}
+
+interface BlocksConnectionResponse {
+  blocks?: {
+    pageInfo?: {
+      hasNextPage: boolean;
+    };
+    edges?: Array<{
+      cursor?: string;
+      node: {
+        id: string;
+        height: number;
+        timestamp: number;
+        previous?: string | null;
+      };
+    }>;
+  };
 }
 
 const GET_BLOCK_TRANSACTIONS = /* GraphQL */ `
@@ -158,9 +183,13 @@ const GET_TRANSACTION = /* GraphQL */ `
 `;
 
 const GET_LATEST_BLOCKS = /* GraphQL */ `
-  query GetLatestBlocks($limit: Int!) {
-    blocks(first: $limit, sort: HEIGHT_DESC) {
+  query GetLatestBlocks($limit: Int!, $cursor: String) {
+    blocks(first: $limit, after: $cursor, sort: HEIGHT_DESC) {
+      pageInfo {
+        hasNextPage
+      }
       edges {
+        cursor
         node {
           id
           height
@@ -322,6 +351,7 @@ function mapTransaction(node: GatewayTransactionNode): ArweaveTransaction {
 export class GatewayClient implements GatewayDataSource {
   private readonly urls: string[];
   private readonly pool: GatewayPool;
+  private static readonly DEGRADED_LATENCY_MS = 2_000;
 
   constructor(urls: string[]) {
     const uniqueUrls = Array.from(
@@ -371,11 +401,39 @@ export class GatewayClient implements GatewayDataSource {
     throw lastError ?? new Error('Gateway request failed');
   }
 
-  async getLatestBlocks(limit: number): Promise<ArweaveBlock[]> {
-    const response = await this.request<any>((client) =>
-      client.request(GET_LATEST_BLOCKS, { limit })
-    );
-    return (response.blocks?.edges ?? []).map((edge: any) => mapBlock(edge.node));
+  async getLatestBlocksPage(page: number, limit: number): Promise<GatewayBlocksPage> {
+    let cursor: string | null = null;
+    let currentPage = 1;
+    let response: BlocksConnectionResponse = {};
+
+    while (currentPage <= page) {
+      response = await this.request<BlocksConnectionResponse>((client) =>
+        client.request(GET_LATEST_BLOCKS, { limit, cursor })
+      );
+
+      if (currentPage === page) {
+        break;
+      }
+
+      const lastCursor =
+        response.blocks?.edges?.[response.blocks.edges.length - 1]?.cursor ?? null;
+      const hasNextPage = response.blocks?.pageInfo?.hasNextPage ?? false;
+
+      if (!hasNextPage || !lastCursor) {
+        break;
+      }
+
+      cursor = lastCursor;
+      currentPage += 1;
+    }
+
+    const edges = response.blocks?.edges ?? [];
+
+    return {
+      data: edges.map((edge) => mapBlock(edge.node)),
+      hasNextPage: response.blocks?.pageInfo?.hasNextPage ?? false,
+      nextCursor: edges[edges.length - 1]?.cursor ?? null
+    };
   }
 
   async getBlockById(id: string): Promise<ArweaveBlock | null> {
@@ -506,5 +564,59 @@ export class GatewayClient implements GatewayDataSource {
       weaveSize: toStringNumber(payload?.blocks ?? payload?.height, '0'),
       peers: toNumber(payload?.peers, 0)
     };
+  }
+
+  async getGatewayStatuses(): Promise<GatewayStatus[]> {
+    const now = Date.now();
+
+    const results = await Promise.all(
+      this.urls.map(async (url) => {
+        const startedAt = Date.now();
+
+        try {
+          const response = await fetch(`${url}/info`, {
+            headers: { accept: 'application/json' },
+            signal: AbortSignal.timeout(5_000)
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          const payload = await response.json();
+          const latencyMs = Date.now() - startedAt;
+
+          const status: GatewayStatus['status'] =
+            latencyMs > GatewayClient.DEGRADED_LATENCY_MS ? 'degraded' : 'healthy';
+
+          return {
+            url,
+            alive: true,
+            latencyMs,
+            blockHeight:
+              typeof payload?.height === 'number' && Number.isFinite(payload.height)
+                ? payload.height
+                : null,
+            lastCheckedAt: now,
+            consecutiveFailures: 0,
+            status,
+            error: null
+          };
+        } catch (error) {
+          return {
+            url,
+            alive: false,
+            latencyMs: Date.now() - startedAt,
+            blockHeight: null,
+            lastCheckedAt: now,
+            consecutiveFailures: 1,
+            status: 'down' as const,
+            error: error instanceof Error ? error.message : String(error)
+          };
+        }
+      })
+    );
+
+    return results;
   }
 }

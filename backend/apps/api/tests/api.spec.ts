@@ -68,8 +68,8 @@ class FakeDb {
 }
 
 const gateway = {
-  async getLatestBlocks(limit: number) {
-    return [
+  async getLatestBlocksPage(page: number, limit: number) {
+    const pages = [
       {
         id: BLOCK_ID,
         height: 100,
@@ -77,8 +77,25 @@ const gateway = {
         txCount: 3,
         weaveSize: '123',
         reward: '5'
+      },
+      {
+        id: 'fffffffffffffffffffffffffffffffffffffffffff',
+        height: 99,
+        timestamp: 1712699900,
+        txCount: 1,
+        weaveSize: '120',
+        reward: '4'
       }
-    ].slice(0, limit);
+    ];
+
+    const start = (page - 1) * limit;
+    const data = pages.slice(start, start + limit);
+
+    return {
+      data,
+      hasNextPage: start + limit < pages.length,
+      nextCursor: data.length ? `blocks-cursor-${page}` : null
+    };
   },
   async getBlockById(id: string) {
     return {
@@ -177,8 +194,27 @@ const gateway = {
       weaveSize: '123',
       peers: 25
     };
+  },
+  async getGatewayStatuses() {
+    return [
+      {
+        url: 'https://gate.ar',
+        alive: true,
+        latencyMs: 100,
+        blockHeight: 100,
+        lastCheckedAt: 1712700050,
+        consecutiveFailures: 0,
+        status: 'healthy',
+        error: null
+      }
+    ];
   }
 };
+
+async function loadBuildApp() {
+  const { buildApp } = await import('../src/app');
+  return buildApp;
+}
 
 async function createTestApp() {
   const diagnosticsChannel = await import('node:diagnostics_channel');
@@ -202,7 +238,7 @@ async function createTestApp() {
     hasSubscribers: false
   });
 
-  const { buildApp } = await import('../src/app');
+  const buildApp = await loadBuildApp();
 
   return await buildApp({
     fastify: { logger: false },
@@ -277,6 +313,16 @@ test('lists cached recent blocks', async () => {
   await app.close();
 });
 
+test('paginates gateway blocks beyond page one', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: '/v1/blocks?page=2&limit=1' });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.data[0].height, 99);
+  assert.equal(payload.pagination.nextCursor, 'blocks-cursor-2');
+  await app.close();
+});
+
 test('reads block by height through fallback gateway', async () => {
   const app = await createTestApp();
   const response = await app.inject({ method: 'GET', url: '/v1/blocks/height/100' });
@@ -290,6 +336,23 @@ test('returns cached network stats', async () => {
   const response = await app.inject({ method: 'GET', url: '/v1/network/stats' });
   assert.equal(response.statusCode, 200);
   assert.equal(response.json().approximateTPS, 1.5);
+  await app.close();
+});
+
+test('falls back to live gateway statuses when cache is empty', async () => {
+  const buildApp = await loadBuildApp();
+  const app = await buildApp({
+    fastify: { logger: false },
+    redis: new FakeRedis({}, {}) as any,
+    db: new FakeDb() as any,
+    gateway: gateway as any,
+    enableSwagger: false,
+    enableWebsocket: false
+  });
+  const response = await app.inject({ method: 'GET', url: '/v1/network/gateways' });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload[0].url, 'https://gate.ar');
   await app.close();
 });
 
