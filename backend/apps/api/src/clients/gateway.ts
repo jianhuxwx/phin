@@ -77,7 +77,12 @@ export interface GatewayDataSource {
   getLatestBlocksPage(page: number, limit: number): Promise<GatewayBlocksPage>;
   getBlockById(id: string): Promise<ArweaveBlock | null>;
   getBlockByHeight(height: number): Promise<ArweaveBlock | null>;
-  getBlockTransactions(blockId: string, limit: number): Promise<GatewayTransactionsPage>;
+  getBlockTransactions(
+    blockId: string,
+    page: number,
+    limit: number,
+    blockHeight?: number
+  ): Promise<GatewayTransactionsPage>;
   getTransaction(id: string): Promise<ArweaveTransaction | null>;
   getTransactionsByOwner(
     owner: string,
@@ -107,41 +112,44 @@ interface BlocksConnectionResponse {
 }
 
 const GET_BLOCK_TRANSACTIONS = /* GraphQL */ `
-  query GetBlockTransactions($blockId: ID!, $cursor: String, $limit: Int!) {
-    block(id: $blockId) {
-      transactions(after: $cursor, first: $limit) {
-        pageInfo {
-          hasNextPage
-        }
-        edges {
-          cursor
-          node {
+  query GetBlockTransactions($height: Int!, $cursor: String, $limit: Int!) {
+    transactions(
+      block: { min: $height, max: $height }
+      after: $cursor
+      first: $limit
+      sort: HEIGHT_ASC
+    ) {
+      pageInfo {
+        hasNextPage
+      }
+      edges {
+        cursor
+        node {
+          id
+          anchor
+          signature
+          owner {
+            address
+          }
+          recipient
+          quantity {
+            ar
+          }
+          fee {
+            ar
+          }
+          data {
+            size
+            type
+          }
+          tags {
+            name
+            value
+          }
+          block {
             id
-            anchor
-            signature
-            owner {
-              address
-            }
-            recipient
-            quantity {
-              ar
-            }
-            fee {
-              ar
-            }
-            data {
-              size
-              type
-            }
-            tags {
-              name
-              value
-            }
-            block {
-              id
-              height
-              timestamp
-            }
+            height
+            timestamp
           }
         }
       }
@@ -202,7 +210,7 @@ const GET_LATEST_BLOCKS = /* GraphQL */ `
 `;
 
 const GET_BLOCK_BY_ID = /* GraphQL */ `
-  query GetBlockById($id: ID!) {
+  query GetBlockById($id: String!) {
     block(id: $id) {
       id
       height
@@ -375,6 +383,22 @@ export class GatewayClient implements GatewayDataSource {
   private readonly urls: string[];
   private readonly pool: GatewayPool;
   private static readonly DEGRADED_LATENCY_MS = 2_000;
+  private static readonly BLOCK_CACHE_TTL_MS = 10_000;
+  private static readonly NETWORK_INFO_CACHE_TTL_MS = 5_000;
+  private readonly blockByIdCache = new Map<
+    string,
+    { expiresAt: number; value: ArweaveBlock | null }
+  >();
+  private readonly blockByHeightCache = new Map<
+    number,
+    { expiresAt: number; value: ArweaveBlock | null }
+  >();
+  private networkInfoCache:
+    | {
+        expiresAt: number;
+        value: { height: number; weaveSize: string; peers: number };
+      }
+    | null = null;
 
   constructor(urls: string[]) {
     const uniqueUrls = Array.from(
@@ -463,6 +487,44 @@ export class GatewayClient implements GatewayDataSource {
     };
   }
 
+  private getCachedBlockById(id: string): ArweaveBlock | null | undefined {
+    const cached = this.blockByIdCache.get(id);
+    if (!cached) {
+      return undefined;
+    }
+
+    if (cached.expiresAt <= Date.now()) {
+      this.blockByIdCache.delete(id);
+      return undefined;
+    }
+
+    return cached.value;
+  }
+
+  private getCachedBlockByHeight(height: number): ArweaveBlock | null | undefined {
+    const cached = this.blockByHeightCache.get(height);
+    if (!cached) {
+      return undefined;
+    }
+
+    if (cached.expiresAt <= Date.now()) {
+      this.blockByHeightCache.delete(height);
+      return undefined;
+    }
+
+    return cached.value;
+  }
+
+  private cacheBlock(block: ArweaveBlock | null): void {
+    if (!block) {
+      return;
+    }
+
+    const expiresAt = Date.now() + GatewayClient.BLOCK_CACHE_TTL_MS;
+    this.blockByIdCache.set(block.id, { expiresAt, value: block });
+    this.blockByHeightCache.set(block.height, { expiresAt, value: block });
+  }
+
   async getLatestBlocksPage(page: number, limit: number): Promise<GatewayBlocksPage> {
     let cursor: string | null = null;
     let currentPage = 1;
@@ -492,38 +554,91 @@ export class GatewayClient implements GatewayDataSource {
     const edges = response.blocks?.edges ?? [];
     const baseBlocks = edges.map((edge) => mapBlock(edge.node));
 
+    const enrichedBlocks = await Promise.all(baseBlocks.map((block) => this.enrichBlock(block)));
+    enrichedBlocks.forEach((block) => this.cacheBlock(block));
+
     return {
-      data: await Promise.all(baseBlocks.map((block) => this.enrichBlock(block))),
+      data: enrichedBlocks,
       hasNextPage: response.blocks?.pageInfo?.hasNextPage ?? false,
       nextCursor: edges[edges.length - 1]?.cursor ?? null
     };
   }
 
   async getBlockById(id: string): Promise<ArweaveBlock | null> {
+    const cached = this.getCachedBlockById(id);
+    if (cached !== undefined) {
+      return cached;
+    }
+
     const response = await this.request<any>((client) =>
       client.request(GET_BLOCK_BY_ID, { id })
     );
-    return response.block ? await this.enrichBlock(mapBlock(response.block)) : null;
+    const block = response.block ? await this.enrichBlock(mapBlock(response.block)) : null;
+    this.cacheBlock(block);
+    return block;
   }
 
   async getBlockByHeight(height: number): Promise<ArweaveBlock | null> {
+    const cached = this.getCachedBlockByHeight(height);
+    if (cached !== undefined) {
+      return cached;
+    }
+
     const response = await this.request<any>((client) =>
       client.request(GET_BLOCK_BY_HEIGHT, { height })
     );
     const edge = response.blocks?.edges?.[0];
-    return edge?.node ? await this.enrichBlock(mapBlock(edge.node)) : null;
+    const block = edge?.node ? await this.enrichBlock(mapBlock(edge.node)) : null;
+    this.cacheBlock(block);
+    return block;
   }
 
-  async getBlockTransactions(blockId: string, limit: number): Promise<GatewayTransactionsPage> {
-    const response = await this.request<any>((client) =>
-      client.request(GET_BLOCK_TRANSACTIONS, { blockId, cursor: null, limit })
-    );
-    const page = response.block?.transactions;
-    const edges = page?.edges ?? [];
+  async getBlockTransactions(
+    blockId: string,
+    page: number,
+    limit: number,
+    blockHeight?: number
+  ): Promise<GatewayTransactionsPage> {
+    const height = blockHeight ?? (await this.getBlockById(blockId))?.height;
+    if (height == null) {
+      return {
+        data: [],
+        hasNextPage: false,
+        nextCursor: null
+      };
+    }
+
+    let cursor: string | null = null;
+    let currentPage = 1;
+    let response: TransactionsConnectionResponse = {};
+
+    while (currentPage <= page) {
+      response = await this.request<TransactionsConnectionResponse>((client) =>
+        client.request(GET_BLOCK_TRANSACTIONS, { height, cursor, limit })
+      );
+
+      if (currentPage === page) {
+        break;
+      }
+
+      const pageInfo = response.transactions?.pageInfo;
+      const lastCursor =
+        response.transactions?.edges?.[response.transactions.edges.length - 1]?.cursor ?? null;
+
+      if (!pageInfo?.hasNextPage || !lastCursor) {
+        break;
+      }
+
+      cursor = lastCursor;
+      currentPage += 1;
+    }
+
+    const transactionsPage = response.transactions;
+    const edges = transactionsPage?.edges ?? [];
 
     return {
       data: edges.map((edge: any) => mapTransaction(edge.node)),
-      hasNextPage: page?.pageInfo?.hasNextPage ?? false,
+      hasNextPage: transactionsPage?.pageInfo?.hasNextPage ?? false,
       nextCursor: edges[edges.length - 1]?.cursor ?? null
     };
   }
@@ -609,6 +724,10 @@ export class GatewayClient implements GatewayDataSource {
   }
 
   async getNetworkInfo(): Promise<{ height: number; weaveSize: string; peers: number }> {
+    if (this.networkInfoCache && this.networkInfoCache.expiresAt > Date.now()) {
+      return this.networkInfoCache.value;
+    }
+
     const baseUrl = this.urls[0];
     const response = await fetch(`${baseUrl}/info`, {
       headers: {
@@ -622,11 +741,21 @@ export class GatewayClient implements GatewayDataSource {
 
     const payload = await response.json();
 
-    return {
+    const value = {
       height: toNumber(payload?.height, 0),
-      weaveSize: toStringNumber(payload?.blocks ?? payload?.height, '0'),
+      weaveSize: toStringNumber(
+        payload?.weave_size ?? payload?.weaveSize ?? payload?.network_weave_size,
+        '0'
+      ),
       peers: toNumber(payload?.peers, 0)
     };
+
+    this.networkInfoCache = {
+      expiresAt: Date.now() + GatewayClient.NETWORK_INFO_CACHE_TTL_MS,
+      value
+    };
+
+    return value;
   }
 
   async getGatewayStatuses(): Promise<GatewayStatus[]> {

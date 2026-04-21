@@ -9,9 +9,17 @@ export class NetworkService {
     private readonly gateway: GatewayDataSource
   ) {}
 
+  private isStaleCachedStats(stats: NetworkStats | null): boolean {
+    if (!stats) {
+      return false;
+    }
+
+    return stats.blockHeight > 0 && stats.weaveSize === '0';
+  }
+
   async getStats(): Promise<NetworkStats> {
     const cached = await this.cache.getNetworkStats();
-    if (cached) {
+    if (cached && !this.isStaleCachedStats(cached)) {
       return cached;
     }
 

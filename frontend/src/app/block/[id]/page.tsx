@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useBlock, useBlockTxs } from '@/lib/hooks'
 import { formatNumber, formatAR, formatBytes, formatDate } from '@/lib/format'
 import Hash from '@/components/ui/Hash'
@@ -18,7 +18,16 @@ export default function BlockPage({ params }: BlockPageProps) {
   const { id } = params
   const { data: block, isLoading, error } = useBlock(id)
   const [txPage, setTxPage] = useState(1)
-  const { data: txData, isLoading: txLoading } = useBlockTxs(block?.id ?? '', 20)
+  const { data: txData, isLoading: txLoading } = useBlockTxs(
+    block?.id ?? '',
+    txPage,
+    20,
+    block?.height
+  )
+
+  useEffect(() => {
+    setTxPage(1)
+  }, [block?.id])
 
   if (error) {
     return (

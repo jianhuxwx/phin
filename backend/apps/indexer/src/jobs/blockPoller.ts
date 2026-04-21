@@ -9,6 +9,7 @@ let recentTxCounts: number[] = [];
 
 export interface GatewayHttpClient {
   query<T>(gql: string, variables?: Record<string, unknown>): Promise<T>;
+  getJson<T>(path: string): Promise<T>;
 }
 
 export interface LatestBlockInfo {
@@ -141,8 +142,112 @@ export function createGatewayHttpClient(baseUrl: string): GatewayHttpClient {
           }
         }
       );
+    },
+    async getJson<T>(path: string): Promise<T> {
+      return withRetry(
+        async () => {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 10_000);
+
+          try {
+            const response = await fetch(`${url}${path}`, {
+              headers: {
+                Accept: 'application/json'
+              },
+              signal: controller.signal
+            });
+
+            const text = await response.text();
+
+            if (!response.ok) {
+              throw new Error(
+                `[BlockPoller] Gateway HTTP error: status=${response.status} body=${text}`
+              );
+            }
+
+            try {
+              return (text ? JSON.parse(text) : {}) as T;
+            } catch (err) {
+              throw new Error(
+                `[BlockPoller] Failed to parse HTTP JSON response: ${(err as Error).message}`
+              );
+            }
+          } finally {
+            clearTimeout(timeout);
+          }
+        },
+        {
+          backoff: true,
+          logger: ({ attempt, maxAttempts, error }) => {
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn(
+              `[GatewayHttpClient] HTTP attempt ${attempt}/${maxAttempts} failed: ${message}`
+            );
+          }
+        }
+      );
     }
   };
+}
+
+interface GatewayBlockMetadata {
+  txCount: number;
+  weaveSize: string;
+  blockSize: string;
+  reward: string;
+}
+
+function toStringNumber(value: unknown, fallback = '0'): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return fallback;
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+}
+
+function parseBlockMetadata(payload: any): GatewayBlockMetadata {
+  const txs = Array.isArray(payload?.txs) ? payload.txs : [];
+
+  return {
+    txCount: toNumber(payload?.tx_count ?? payload?.txCount, txs.length),
+    weaveSize: toStringNumber(payload?.weave_size ?? payload?.weaveSize, '0'),
+    blockSize: toStringNumber(payload?.block_size ?? payload?.blockSize, '0'),
+    reward: toStringNumber(payload?.reward, '0')
+  };
+}
+
+async function fetchBlockMetadata(
+  client: GatewayHttpClient,
+  block: Pick<LatestBlockInfo, 'id' | 'height'>
+): Promise<GatewayBlockMetadata | null> {
+  try {
+    return parseBlockMetadata(await client.getJson(`/block/hash/${block.id}`));
+  } catch {
+    try {
+      return parseBlockMetadata(await client.getJson(`/block/height/${block.height}`));
+    } catch {
+      return null;
+    }
+  }
 }
 
 const GET_LATEST_BLOCK_INFO = /* GraphQL */ `
@@ -206,16 +311,19 @@ export async function getLatestBlockInfo(
     );
   }
 
+  const metadata = await fetchBlockMetadata(client, {
+    id: node.id,
+    height: node.height
+  });
+
   return {
     height: node.height,
     id: node.id,
     timestamp: node.timestamp,
-    // These extended fields are not exposed by the current gate.ar schema.
-    // Default to zero-like values; they can be populated from a richer endpoint in the future.
-    weaveSize: '0',
-    blockSize: '0',
-    txCount: 0,
-    reward: '0',
+    weaveSize: metadata?.weaveSize ?? '0',
+    blockSize: metadata?.blockSize ?? '0',
+    txCount: metadata?.txCount ?? 0,
+    reward: metadata?.reward ?? '0',
     previousBlock: node.previous ?? ''
   };
 }
@@ -247,16 +355,19 @@ export async function getBlockInfoByHeight(
     );
   }
 
+  const metadata = await fetchBlockMetadata(client, {
+    id: block.id,
+    height: block.height
+  });
+
   return {
     height: block.height,
     id: block.id,
     timestamp: block.timestamp,
-    // These extended fields are not exposed by all gateway schemas. Default to
-    // zero-like values; they can be populated from a richer endpoint in the future.
-    weaveSize: '0',
-    blockSize: '0',
-    txCount: 0,
-    reward: '0',
+    weaveSize: metadata?.weaveSize ?? '0',
+    blockSize: metadata?.blockSize ?? '0',
+    txCount: metadata?.txCount ?? 0,
+    reward: metadata?.reward ?? '0',
     previousBlock: block.previous ?? ''
   };
 }

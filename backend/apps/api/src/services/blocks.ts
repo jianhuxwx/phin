@@ -11,10 +11,24 @@ export class BlocksService {
     private readonly gateway: GatewayDataSource
   ) {}
 
+  private isStaleCachedBlock(block: {
+    weaveSize?: string;
+    reward?: string;
+    txCount?: number;
+  } | null): boolean {
+    if (!block) {
+      return false;
+    }
+
+    const hasTransactions = typeof block.txCount === 'number' && block.txCount > 0;
+    return hasTransactions && block.weaveSize === '0' && block.reward === '0';
+  }
+
   async list(page: number, limit: number): Promise<PaginatedResponse<ApiBlockSummary>> {
     if (page === 1) {
       const cached = await this.cache.listRecentBlocks(limit);
-      if (cached.length > 0) {
+      const hasStaleEntries = cached.some((block) => this.isStaleCachedBlock(block));
+      if (cached.length > 0 && !hasStaleEntries) {
         return {
           data: cached.map(toBlockSummary),
           pagination: {
@@ -41,7 +55,7 @@ export class BlocksService {
 
   async getById(id: string): Promise<ApiBlockDetail> {
     const cached = await this.cache.getBlockById(id);
-    if (cached) {
+    if (cached && !this.isStaleCachedBlock(cached)) {
       return toBlockDetail(cached);
     }
 
@@ -55,7 +69,7 @@ export class BlocksService {
 
   async getByHeight(height: number): Promise<ApiBlockDetail> {
     const cached = await this.cache.getBlockByHeight(height);
-    if (cached) {
+    if (cached && !this.isStaleCachedBlock(cached)) {
       return toBlockDetail(cached);
     }
 
@@ -67,32 +81,39 @@ export class BlocksService {
     return toBlockDetail(block);
   }
 
-  async getTransactions(id: string, limit: number) {
+  async getTransactions(id: string, page: number, limit: number, blockHeight?: number) {
     const cached = await this.cache.getBlockById(id);
     const cachedTransactions = cached?.transactions ?? [];
     const shouldUseCachedTransactions =
       cached != null && (cachedTransactions.length > 0 || cached.txCount === 0);
 
     if (shouldUseCachedTransactions) {
-      const transactions = cachedTransactions.slice(0, limit).map(toTransactionSummary);
+      const start = (page - 1) * limit;
+      const end = start + limit;
+      const transactions = cachedTransactions.slice(start, end).map(toTransactionSummary);
       return {
         data: transactions,
         pagination: {
-          page: 1,
+          page,
           limit,
-          hasNextPage: cachedTransactions.length > limit
+          hasNextPage: cachedTransactions.length > end
         }
       };
     }
 
-    const page = await this.gateway.getBlockTransactions(id, limit);
+    const transactionsPage = await this.gateway.getBlockTransactions(
+      id,
+      page,
+      limit,
+      blockHeight
+    );
     return {
-      data: page.data.map(toTransactionSummary),
+      data: transactionsPage.data.map(toTransactionSummary),
       pagination: {
-        page: 1,
+        page,
         limit,
-        hasNextPage: page.hasNextPage,
-        nextCursor: page.nextCursor
+        hasNextPage: transactionsPage.hasNextPage,
+        nextCursor: transactionsPage.nextCursor
       }
     };
   }

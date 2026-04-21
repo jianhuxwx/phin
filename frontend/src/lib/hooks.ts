@@ -23,8 +23,11 @@ export function useBlock(id: string) {
   )
 }
 
-export function useBlockTxs(id: string, limit = 20) {
-  return useSWR(id ? ['block-txs', id, limit] : null, () => api.getBlockTxs(id, limit))
+export function useBlockTxs(id: string, page = 1, limit = 20, height?: number) {
+  return useSWR(
+    id ? ['block-txs', id, page, limit, height] : null,
+    () => api.getBlockTxs(id, page, limit, height)
+  )
 }
 
 // Transactions

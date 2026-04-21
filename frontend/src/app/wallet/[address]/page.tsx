@@ -6,6 +6,7 @@ import { formatAR, formatNumber } from '@/lib/format'
 import Hash from '@/components/ui/Hash'
 import StatCard from '@/components/ui/StatCard'
 import TransactionList from '@/components/transactions/TransactionList'
+import WalletActivityList from '@/components/transactions/WalletActivityList'
 import Pagination from '@/components/ui/Pagination'
 import { Skeleton } from '@/components/ui/Skeleton'
 import Badge from '@/components/ui/Badge'
@@ -104,7 +105,7 @@ export default function WalletPage({ params }: WalletPageProps) {
       {/* Tab content */}
       {tab === 'transactions' && (
         <div>
-          <TransactionList txs={txData?.data} loading={txLoading} />
+          <WalletActivityList txs={txData?.data} loading={txLoading} />
           {txData && (
             <Pagination
               page={txPage}

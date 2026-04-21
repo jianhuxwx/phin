@@ -33,8 +33,16 @@ export const getBlockById = (id: string) =>
 export const getBlockByHeight = (height: number) =>
   apiFetch<ApiBlockDetail>(`/v1/blocks/height/${height}`)
 
-export const getBlockTxs = (id: string, limit = 20) =>
-  apiFetch<PaginatedResponse<ApiTransactionSummary>>(`/v1/blocks/${id}/transactions?limit=${limit}`)
+export const getBlockTxs = (id: string, page = 1, limit = 20, height?: number) => {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  })
+  if (typeof height === 'number') params.set('height', String(height))
+  return apiFetch<PaginatedResponse<ApiTransactionSummary>>(
+    `/v1/blocks/${id}/transactions?${params}`
+  )
+}
 
 // Transactions
 export const getTx = (id: string) =>

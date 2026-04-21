@@ -79,6 +79,7 @@ async function runUnitTests() {
   await test('getBlockInfoByHeight uses blocks query shape supported by gateway', async () => {
     let capturedQuery = '';
     let capturedVariables: Record<string, unknown> | undefined;
+    const requestedPaths: string[] = [];
 
     const client = {
       async query<T>(gql: string, variables?: Record<string, unknown>): Promise<T> {
@@ -99,6 +100,16 @@ async function runUnitTests() {
             ]
           }
         } as T;
+      },
+      async getJson<T>(path: string): Promise<T> {
+        requestedPaths.push(path);
+
+        return {
+          tx_count: 12,
+          weave_size: '123456789',
+          block_size: '98765',
+          reward: '2500000000000'
+        } as T;
       }
     };
 
@@ -110,8 +121,11 @@ async function runUnitTests() {
     assert.equal(info.height, 123);
     assert.equal(info.timestamp, 1712700000);
     assert.equal(info.previousBlock, 'block-122');
-    assert.equal(info.weaveSize, '0');
-    assert.equal(info.reward, '0');
+    assert.deepEqual(requestedPaths, ['/block/hash/block-123']);
+    assert.equal(info.weaveSize, '123456789');
+    assert.equal(info.blockSize, '98765');
+    assert.equal(info.txCount, 12);
+    assert.equal(info.reward, '2500000000000');
   });
 }
 

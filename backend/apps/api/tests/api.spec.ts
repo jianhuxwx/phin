@@ -334,6 +334,38 @@ test('reads block by height through fallback gateway', async () => {
   await app.close();
 });
 
+test('ignores stale cached block detail with zero reward and weave size', async () => {
+  const buildApp = await loadBuildApp();
+  const app = await buildApp({
+    fastify: { logger: false },
+    redis: new FakeRedis(
+      {
+        'block:height:100': JSON.stringify({
+          id: BLOCK_ID,
+          height: 100,
+          timestamp: 1712700000,
+          txCount: 3,
+          weaveSize: '0',
+          reward: '0',
+          indexedAt: 1712700050,
+          transactions: []
+        })
+      },
+      {}
+    ) as any,
+    db: new FakeDb() as any,
+    gateway: gateway as any,
+    enableSwagger: false,
+    enableWebsocket: false
+  });
+
+  const response = await app.inject({ method: 'GET', url: '/v1/blocks/height/100' });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().weaveSize, '123');
+  assert.equal(response.json().reward, '5');
+  await app.close();
+});
+
 test('falls back to gateway block transactions when cached block omits them', async () => {
   const buildApp = await loadBuildApp();
   const app = await buildApp({
@@ -367,6 +399,55 @@ test('falls back to gateway block transactions when cached block omits them', as
   await app.close();
 });
 
+test('paginates cached block transactions', async () => {
+  const buildApp = await loadBuildApp();
+  const pagedTxs = Array.from({ length: 25 }, (_, index) => ({
+    id: `tx-${index}`,
+    owner: { address: WALLET },
+    recipient: null,
+    quantity: { ar: '0' },
+    fee: { ar: '0.01' },
+    data: { size: index + 1, type: 'text/plain' },
+    tags: [],
+    block: { height: 100, timestamp: 1712700000 }
+  }));
+
+  const app = await buildApp({
+    fastify: { logger: false },
+    redis: new FakeRedis(
+      {
+        [`block:${BLOCK_ID}`]: JSON.stringify({
+          id: BLOCK_ID,
+          height: 100,
+          timestamp: 1712700000,
+          txCount: pagedTxs.length,
+          weaveSize: '123',
+          reward: '5',
+          indexedAt: 1712700050,
+          transactions: pagedTxs
+        })
+      },
+      {}
+    ) as any,
+    db: new FakeDb() as any,
+    gateway: gateway as any,
+    enableSwagger: false,
+    enableWebsocket: false
+  });
+
+  const response = await app.inject({
+    method: 'GET',
+    url: `/v1/blocks/${BLOCK_ID}/transactions?page=2&limit=20`
+  });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.pagination.page, 2);
+  assert.equal(payload.data.length, 5);
+  assert.equal(payload.data[0].id, 'tx-20');
+  assert.equal(payload.pagination.hasNextPage, false);
+  await app.close();
+});
+
 test('accepts long Arweave block ids on block detail routes', async () => {
   const app = await createTestApp();
   const longBlockId = 'WZuQo33XqnuA3iFsHFwl0rU4azwTZuVgTCoFcoyKdN4y1cCRKGu1jxF8gkb0cMPS';
@@ -390,6 +471,34 @@ test('returns cached network stats', async () => {
   const response = await app.inject({ method: 'GET', url: '/v1/network/stats' });
   assert.equal(response.statusCode, 200);
   assert.equal(response.json().approximateTPS, 1.5);
+  await app.close();
+});
+
+test('ignores stale cached network stats with zero weave size', async () => {
+  const buildApp = await loadBuildApp();
+  const app = await buildApp({
+    fastify: { logger: false },
+    redis: new FakeRedis(
+      {
+        'network:stats': JSON.stringify({
+          blockHeight: 100,
+          weaveSize: '0',
+          lastBlockTimestamp: 1712700000,
+          approximateTPS: 0,
+          lastBlockTxCount: 0,
+          updatedAt: 1712700050
+        })
+      },
+      {}
+    ) as any,
+    db: new FakeDb() as any,
+    gateway: gateway as any,
+    enableSwagger: false,
+    enableWebsocket: false
+  });
+  const response = await app.inject({ method: 'GET', url: '/v1/network/stats' });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().weaveSize, '123');
   await app.close();
 });
 
@@ -443,6 +552,36 @@ test('resolves tx search and rejects keyword search as unsupported', async () =>
   });
   assert.equal(keywordResponse.statusCode, 200);
   assert.equal(keywordResponse.json().type, 'unsupported');
+  await app.close();
+});
+
+test('resolves wallet addresses as wallets when no transaction exists for the id', async () => {
+  const buildApp = await loadBuildApp();
+  const app = await buildApp({
+    fastify: { logger: false },
+    redis: new FakeRedis({}, {}) as any,
+    db: new FakeDb() as any,
+    gateway: {
+      ...gateway,
+      async getTransaction(id: string) {
+        if (id === WALLET) {
+          return null;
+        }
+
+        return await gateway.getTransaction(id);
+      }
+    } as any,
+    enableSwagger: false,
+    enableWebsocket: false
+  });
+
+  const response = await app.inject({
+    method: 'GET',
+    url: `/v1/search?q=${WALLET}`
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().type, 'wallet');
+  assert.equal(response.json().target, WALLET);
   await app.close();
 });
 

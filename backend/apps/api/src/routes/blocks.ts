@@ -32,9 +32,14 @@ const blocksRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   app.get('/blocks/:id/transactions', { schema: getBlockTransactionsSchema }, async (request) => {
     const { blocks } = createServices(app);
     const params = request.params as { id: string };
-    const query = request.query as { limit?: number };
+    const query = request.query as { page?: number; limit?: number; height?: number };
     const pagination = getPagination(query);
-    return await blocks.getTransactions(params.id, pagination.limit);
+    return await blocks.getTransactions(
+      params.id,
+      pagination.page,
+      pagination.limit,
+      query.height != null ? Number(query.height) : undefined
+    );
   });
 };
 

@@ -35,7 +35,9 @@ export const getBlockTransactionsSchema = {
   querystring: {
     type: 'object',
     properties: {
-      limit: paginationSchema.properties.limit
+      page: paginationSchema.properties.page,
+      limit: paginationSchema.properties.limit,
+      height: blockHeightSchema
     }
   }
 };
