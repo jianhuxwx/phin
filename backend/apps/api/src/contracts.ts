@@ -60,6 +60,15 @@ export interface GatewayWallet {
   lastTransactionId: string | null;
 }
 
+export interface GatewayArnsResolution {
+  name: string;
+  processId: string;
+  txId: string;
+  resolvedAt: number | null;
+  ttlSeconds: number | null;
+  undernameLimit: number;
+}
+
 export interface NetworkStats {
   blockHeight: number;
   weaveSize: string;
@@ -138,6 +147,58 @@ export interface ApiArnsRecord {
   expiresAt: string | null;
   recordType: string;
   undernameLimit: number;
+}
+
+export interface ApiArnsUndername {
+  undername: string;
+  fullName: string;
+  targetId: string | null;
+  targetKind: 'transaction' | 'process' | null;
+  ttlSeconds: number | null;
+  updatedAt: string;
+  updateTxId: string;
+}
+
+export interface ApiArnsHistoryEvent {
+  eventTxId: string;
+  eventType:
+    | 'register'
+    | 'purchase'
+    | 'lease_start'
+    | 'renewal'
+    | 'transfer'
+    | 'target_update'
+    | 'controller_update'
+    | 'undername_set'
+    | 'update';
+  ownerAddress: string | null;
+  controllerAddress: string | null;
+  targetId: string | null;
+  targetKind: 'transaction' | 'process' | null;
+  ttlSeconds: number | null;
+  expiresAt: string | null;
+  purchasePrice: string | null;
+  purchaseCurrency: string | null;
+  blockHeight: number | null;
+  blockTimestamp: string;
+}
+
+export interface ApiArnsDetail extends ApiArnsRecord {
+  resolvedUrl: string;
+  controllerAddress: string | null;
+  processId: string | null;
+  targetId: string | null;
+  targetKind: 'transaction' | 'process' | null;
+  ttlSeconds: number | null;
+  registeredBlockHeight: number | null;
+  lastUpdatedAt: string;
+  lastUpdateTxId: string;
+  purchasePrice: string | null;
+  purchaseCurrency: string | null;
+  undernameCount: number;
+  undernameLimitHit: boolean;
+  daysRemaining: number | null;
+  undernames: ApiArnsUndername[];
 }
 
 export interface SearchResult {

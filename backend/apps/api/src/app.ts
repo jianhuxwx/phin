@@ -52,6 +52,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await registerGateway(
     app,
     [config.gateArUrl, ...config.gateArFallbackUrls],
+    config.arnsResolverUrl,
     options.gateway
   );
 

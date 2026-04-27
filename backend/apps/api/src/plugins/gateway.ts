@@ -11,7 +11,8 @@ declare module 'fastify' {
 export async function registerGateway(
   app: FastifyInstance,
   urls: string[],
+  arnsResolverUrl: string,
   existingGateway?: GatewayDataSource
 ): Promise<void> {
-  app.decorate('gateway', existingGateway ?? new GatewayClient(urls));
+  app.decorate('gateway', existingGateway ?? new GatewayClient(urls, { arnsResolverUrl }));
 }

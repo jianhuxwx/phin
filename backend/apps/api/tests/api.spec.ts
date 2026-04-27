@@ -25,8 +25,65 @@ class FakeRedis {
 
 class FakeDb {
   async query(sql: string, params: unknown[]) {
-    if (sql.includes('COUNT(*)')) {
-      return { rows: [{ count: 1 }] };
+    if (sql.includes('FROM arns_undernames') && !sql.includes('FROM arns_records')) {
+      if (sql.includes('WHERE parent_name = $1')) {
+        if (params[0] === 'alice') {
+          return {
+            rows: [
+              {
+                undername: 'docs',
+                full_name: 'docs.alice',
+                target_id: 'uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu',
+                target_kind: 'transaction',
+                ttl_seconds: 300,
+                updated_at: '2026-04-12T00:00:00.000Z',
+                update_tx_id: 'vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv'
+              }
+            ]
+          };
+        }
+
+        return { rows: [] };
+      }
+    }
+
+    if (sql.includes('FROM arns_events')) {
+      if (params[0] === 'alice') {
+        return {
+          rows: [
+            {
+              event_tx_id: 'hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+              event_type: 'target_update',
+              owner_address: WALLET,
+              controller_address: 'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii',
+              target_id: TX_ID,
+              target_kind: 'transaction',
+              ttl_seconds: 900,
+              expires_at: null,
+              purchase_price: null,
+              purchase_currency: null,
+              block_height: 111,
+              block_timestamp: '2026-04-14T00:00:00.000Z'
+            },
+            {
+              event_tx_id: 'ggggggggggggggggggggggggggggggggggggggggggg',
+              event_type: 'register',
+              owner_address: WALLET,
+              controller_address: null,
+              target_id: null,
+              target_kind: null,
+              ttl_seconds: null,
+              expires_at: null,
+              purchase_price: '15',
+              purchase_currency: 'AR',
+              block_height: 100,
+              block_timestamp: '2026-04-10T00:00:00.000Z'
+            }
+          ]
+        };
+      }
+
+      return { rows: [] };
     }
 
     if (sql.includes('WHERE name = $1')) {
@@ -38,15 +95,31 @@ class FakeDb {
               owner_address: WALLET,
               transaction_id: TX_ID,
               registered_at: '2026-04-10T00:00:00.000Z',
-              expires_at: null,
-              record_type: 'Register',
-              undername_limit: 10
+              expires_at: '2026-05-10T00:00:00.000Z',
+              record_type: 'lease',
+              undername_limit: 10,
+              resolved_url: 'alice.ar.io',
+              controller_address: 'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii',
+              process_id: 'ppppppppppppppppppppppppppppppppppppppppppp',
+              target_id: TX_ID,
+              target_kind: 'transaction',
+              ttl_seconds: 900,
+              registered_block_height: 100,
+              last_updated_at: '2026-04-14T00:00:00.000Z',
+              last_update_tx_id: 'hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+              purchase_price: '15',
+              purchase_currency: 'AR',
+              undername_count: 1
             }
           ]
         };
       }
 
       return { rows: [] };
+    }
+
+    if (sql.includes('COUNT(*)')) {
+      return { rows: [{ count: 1 }] };
     }
 
     return {
@@ -57,7 +130,7 @@ class FakeDb {
           transaction_id: TX_ID,
           registered_at: '2026-04-10T00:00:00.000Z',
           expires_at: null,
-          record_type: 'Register',
+          record_type: 'permanent',
           undername_limit: 10
         }
       ]
@@ -137,9 +210,36 @@ const gateway = {
       nextCursor: null
     };
   },
+  async resolveArnsName(name: string) {
+    if (name === 'arlink') {
+      return {
+        name,
+        processId: 'ppppppppppppppppppppppppppppppppppppppppppp',
+        txId: 'lllllllllllllllllllllllllllllllllllllllllll',
+        resolvedAt: 1712700100000,
+        ttlSeconds: 900,
+        undernameLimit: 25
+      };
+    }
+
+    return null;
+  },
   async getTransaction(id: string) {
     if (id === 'ddddddddddddddddddddddddddddddddddddddddddd') {
       return null;
+    }
+
+    if (id === 'lllllllllllllllllllllllllllllllllllllllllll') {
+      return {
+        id,
+        owner: { address: WALLET },
+        recipient: null,
+        quantity: { ar: '0' },
+        fee: { ar: '0.01' },
+        data: { size: 0, type: null },
+        tags: [{ name: 'App-Name', value: 'ArNS' }],
+        block: { id: BLOCK_ID, height: 100, timestamp: 1712700000 }
+      };
     }
 
     return {
@@ -310,6 +410,18 @@ test('lists cached recent blocks', async () => {
   assert.equal(response.statusCode, 200);
   const payload = response.json();
   assert.equal(payload.data[0].id, BLOCK_ID);
+  await app.close();
+});
+
+test('falls back to gateway blocks when cached recent blocks are only a partial page', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: '/v1/blocks?limit=2' });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.data.length, 2);
+  assert.equal(payload.data[0].height, 100);
+  assert.equal(payload.data[1].height, 99);
+  assert.equal(payload.pagination.hasNextPage, false);
   await app.close();
 });
 
@@ -533,7 +645,57 @@ test('returns ArNS detail from Postgres', async () => {
   const app = await createTestApp();
   const response = await app.inject({ method: 'GET', url: '/v1/arns/alice' });
   assert.equal(response.statusCode, 200);
-  assert.equal(response.json().name, 'alice');
+  const payload = response.json();
+  assert.equal(payload.name, 'alice');
+  assert.equal(payload.resolvedUrl, 'alice.ar.io');
+  assert.equal(payload.controllerAddress, 'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii');
+  assert.equal(payload.targetId, TX_ID);
+  assert.equal(payload.ttlSeconds, 900);
+  assert.equal(payload.undernameCount, 1);
+  assert.equal(payload.undernames.length, 1);
+  assert.equal(payload.undernames[0].fullName, 'docs.alice');
+  await app.close();
+});
+
+test('falls back to live gateway ArNS resolution when Postgres misses the name', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: '/v1/arns/arlink' });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.name, 'arlink');
+  assert.equal(payload.transactionId, 'lllllllllllllllllllllllllllllllllllllllllll');
+  assert.equal(payload.ownerAddress, WALLET);
+  assert.equal(payload.recordType, 'permanent');
+  assert.equal(payload.undernameLimit, 25);
+  assert.equal(payload.processId, 'ppppppppppppppppppppppppppppppppppppppppppp');
+  assert.equal(payload.ttlSeconds, 900);
+  await app.close();
+});
+
+test('returns ArNS history from Postgres', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: '/v1/arns/alice/history?page=1&limit=20' });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.data.length, 2);
+  assert.equal(payload.data[0].eventType, 'target_update');
+  assert.equal(payload.data[1].purchasePrice, '15');
+  await app.close();
+});
+
+test('filters ArNS list by both q and legacy search query params', async () => {
+  const app = await createTestApp();
+
+  const qResponse = await app.inject({ method: 'GET', url: '/v1/arns?q=alice' });
+  assert.equal(qResponse.statusCode, 200);
+  assert.equal(qResponse.json().data.length, 1);
+  assert.equal(qResponse.json().data[0].name, 'alice');
+
+  const legacySearchResponse = await app.inject({ method: 'GET', url: '/v1/arns?search=alice' });
+  assert.equal(legacySearchResponse.statusCode, 200);
+  assert.equal(legacySearchResponse.json().data.length, 1);
+  assert.equal(legacySearchResponse.json().data[0].name, 'alice');
+
   await app.close();
 });
 

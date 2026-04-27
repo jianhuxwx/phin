@@ -28,7 +28,8 @@ export class BlocksService {
     if (page === 1) {
       const cached = await this.cache.listRecentBlocks(limit);
       const hasStaleEntries = cached.some((block) => this.isStaleCachedBlock(block));
-      if (cached.length > 0 && !hasStaleEntries) {
+      const hasFullPage = cached.length >= limit;
+      if (hasFullPage && !hasStaleEntries) {
         return {
           data: cached.map(toBlockSummary),
           pagination: {

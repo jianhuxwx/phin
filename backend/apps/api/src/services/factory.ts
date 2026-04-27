@@ -12,7 +12,7 @@ import { WalletsService } from './wallets';
 export function createServices(app: FastifyInstance) {
   const cache = new CacheRepository(app.redis);
   const arnsRepository = new ArnsRepository(app.db);
-  const arns = new ArnsService(arnsRepository);
+  const arns = new ArnsService(arnsRepository, app.gateway);
   const blocks = new BlocksService(cache, app.gateway);
   const transactions = new TransactionsService(cache, app.gateway);
   const wallets = new WalletsService(app.gateway, arns);

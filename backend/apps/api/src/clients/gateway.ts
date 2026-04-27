@@ -1,6 +1,7 @@
 import type { GraphQLClient } from 'graphql-request';
 import { GatewayPool } from 'phin-gateway';
 import type {
+  GatewayArnsResolution,
   GatewayBlock as ArweaveBlock,
   GatewayStatus,
   GatewayTransaction as ArweaveTransaction,
@@ -77,6 +78,7 @@ export interface GatewayDataSource {
   getLatestBlocksPage(page: number, limit: number): Promise<GatewayBlocksPage>;
   getBlockById(id: string): Promise<ArweaveBlock | null>;
   getBlockByHeight(height: number): Promise<ArweaveBlock | null>;
+  resolveArnsName(name: string): Promise<GatewayArnsResolution | null>;
   getBlockTransactions(
     blockId: string,
     page: number,
@@ -379,8 +381,24 @@ function mapTransaction(node: GatewayTransactionNode): ArweaveTransaction {
   };
 }
 
+function mapArnsResolution(name: string, payload: any): GatewayArnsResolution | null {
+  if (!payload || typeof payload.txId !== 'string' || typeof payload.processId !== 'string') {
+    return null;
+  }
+
+  return {
+    name,
+    processId: payload.processId,
+    txId: payload.txId,
+    resolvedAt: typeof payload.resolvedAt === 'number' ? payload.resolvedAt : null,
+    ttlSeconds: typeof payload.ttlSeconds === 'number' ? payload.ttlSeconds : null,
+    undernameLimit: toNumber(payload.undernameLimit ?? payload.limit, 0)
+  };
+}
+
 export class GatewayClient implements GatewayDataSource {
   private readonly urls: string[];
+  private readonly arnsResolverUrl: string;
   private readonly pool: GatewayPool;
   private static readonly DEGRADED_LATENCY_MS = 2_000;
   private static readonly BLOCK_CACHE_TTL_MS = 10_000;
@@ -400,7 +418,7 @@ export class GatewayClient implements GatewayDataSource {
       }
     | null = null;
 
-  constructor(urls: string[]) {
+  constructor(urls: string[], options: { arnsResolverUrl?: string } = {}) {
     const uniqueUrls = Array.from(
       new Set(
         urls
@@ -414,6 +432,7 @@ export class GatewayClient implements GatewayDataSource {
     }
 
     this.urls = uniqueUrls;
+    this.arnsResolverUrl = normalizeGatewayBaseUrl(options.arnsResolverUrl ?? uniqueUrls[0]);
     this.pool = new GatewayPool(uniqueUrls.map((url) => buildGraphqlUrl(url)));
   }
 
@@ -467,6 +486,28 @@ export class GatewayClient implements GatewayDataSource {
     }
 
     return null;
+  }
+
+  async resolveArnsName(name: string): Promise<GatewayArnsResolution | null> {
+    const encodedName = encodeURIComponent(name);
+    try {
+      const response = await fetch(`${this.arnsResolverUrl}/ar-io/resolver/${encodedName}`, {
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(5_000)
+      });
+
+      if (response.status === 404) {
+        return null;
+      }
+
+      if (!response.ok) {
+        return null;
+      }
+
+      return mapArnsResolution(name, await response.json());
+    } catch {
+      return null;
+    }
   }
 
   private async enrichBlock(block: ArweaveBlock): Promise<ArweaveBlock> {

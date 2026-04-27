@@ -7,7 +7,8 @@ export const listArnsSchema = {
       page: paginationSchema.properties.page,
       limit: paginationSchema.properties.limit,
       ownerAddress: walletAddressSchema,
-      q: { type: 'string', minLength: 1 }
+      q: { type: 'string', minLength: 1 },
+      search: { type: 'string', minLength: 1 }
     }
   }
 };
@@ -22,4 +23,13 @@ export const getArnsByNameSchema = {
   }
 };
 
-export const getArnsHistorySchema = getArnsByNameSchema;
+export const getArnsHistorySchema = {
+  ...getArnsByNameSchema,
+  querystring: {
+    type: 'object',
+    properties: {
+      page: paginationSchema.properties.page,
+      limit: paginationSchema.properties.limit
+    }
+  }
+};

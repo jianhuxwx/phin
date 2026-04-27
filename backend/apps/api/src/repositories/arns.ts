@@ -1,5 +1,15 @@
 import type { Pool } from 'pg';
-import type { ApiArnsRecord, PaginatedResponse } from '../contracts';
+import type {
+  ApiArnsDetail,
+  ApiArnsHistoryEvent,
+  ApiArnsRecord,
+  ApiArnsUndername,
+  PaginatedResponse
+} from '../contracts';
+
+function toIso(value: string | Date | null): string | null {
+  return value ? new Date(value).toISOString() : null;
+}
 
 function mapRecord(row: any): ApiArnsRecord {
   return {
@@ -7,10 +17,48 @@ function mapRecord(row: any): ApiArnsRecord {
     ownerAddress: row.owner_address,
     transactionId: row.transaction_id,
     registeredAt: new Date(row.registered_at).toISOString(),
-    expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
+    expiresAt: toIso(row.expires_at),
     recordType: row.record_type,
     undernameLimit: row.undername_limit
   };
+}
+
+function mapUndername(row: any): ApiArnsUndername {
+  return {
+    undername: row.undername,
+    fullName: row.full_name,
+    targetId: row.target_id,
+    targetKind: row.target_kind,
+    ttlSeconds: row.ttl_seconds,
+    updatedAt: new Date(row.updated_at).toISOString(),
+    updateTxId: row.update_tx_id
+  };
+}
+
+function mapHistoryEvent(row: any): ApiArnsHistoryEvent {
+  return {
+    eventTxId: row.event_tx_id,
+    eventType: row.event_type,
+    ownerAddress: row.owner_address,
+    controllerAddress: row.controller_address,
+    targetId: row.target_id,
+    targetKind: row.target_kind,
+    ttlSeconds: row.ttl_seconds,
+    expiresAt: toIso(row.expires_at),
+    purchasePrice: row.purchase_price,
+    purchaseCurrency: row.purchase_currency,
+    blockHeight: row.block_height,
+    blockTimestamp: new Date(row.block_timestamp).toISOString()
+  };
+}
+
+function computeDaysRemaining(expiresAt: string | null): number | null {
+  if (!expiresAt) {
+    return null;
+  }
+
+  const diffMs = new Date(expiresAt).getTime() - Date.now();
+  return Math.max(0, Math.ceil(diffMs / 86_400_000));
 }
 
 export class ArnsRepository {
@@ -73,25 +121,123 @@ export class ArnsRepository {
     };
   }
 
-  async getByName(name: string): Promise<ApiArnsRecord | null> {
+  async getByName(name: string): Promise<ApiArnsDetail | null> {
+    const [recordResult, undernamesResult] = await Promise.all([
+      this.db.query(
+        `
+          SELECT
+            name,
+            owner_address,
+            transaction_id,
+            registered_at,
+            expires_at,
+            record_type,
+            undername_limit,
+            resolved_url,
+            controller_address,
+            process_id,
+            target_id,
+            target_kind,
+            ttl_seconds,
+            registered_block_height,
+            last_updated_at,
+            last_update_tx_id,
+            purchase_price,
+            purchase_currency,
+            (
+              SELECT COUNT(*)::int
+              FROM arns_undernames
+              WHERE parent_name = arns_records.name
+            ) AS undername_count
+          FROM arns_records
+          WHERE name = $1
+          LIMIT 1
+        `,
+        [name]
+      ),
+      this.db.query(
+        `
+          SELECT
+            undername,
+            full_name,
+            target_id,
+            target_kind,
+            ttl_seconds,
+            updated_at,
+            update_tx_id
+          FROM arns_undernames
+          WHERE parent_name = $1
+          ORDER BY undername ASC
+        `,
+        [name]
+      )
+    ]);
+
+    const row = recordResult.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    const base = mapRecord(row);
+    const undernameCount = row.undername_count ?? 0;
+
+    return {
+      ...base,
+      resolvedUrl: row.resolved_url,
+      controllerAddress: row.controller_address,
+      processId: row.process_id,
+      targetId: row.target_id,
+      targetKind: row.target_kind,
+      ttlSeconds: row.ttl_seconds,
+      registeredBlockHeight: row.registered_block_height,
+      lastUpdatedAt: new Date(row.last_updated_at).toISOString(),
+      lastUpdateTxId: row.last_update_tx_id,
+      purchasePrice: row.purchase_price,
+      purchaseCurrency: row.purchase_currency,
+      undernameCount,
+      undernameLimitHit: row.undername_limit > 0 && undernameCount >= row.undername_limit,
+      daysRemaining: computeDaysRemaining(base.expiresAt),
+      undernames: undernamesResult.rows.map(mapUndername)
+    };
+  }
+
+  async getHistory(
+    name: string,
+    options: { page: number; limit: number }
+  ): Promise<PaginatedResponse<ApiArnsHistoryEvent>> {
+    const offset = (options.page - 1) * options.limit;
     const result = await this.db.query(
       `
         SELECT
-          name,
+          event_tx_id,
+          event_type,
           owner_address,
-          transaction_id,
-          registered_at,
+          controller_address,
+          target_id,
+          target_kind,
+          ttl_seconds,
           expires_at,
-          record_type,
-          undername_limit
-        FROM arns_records
+          purchase_price,
+          purchase_currency,
+          block_height,
+          block_timestamp
+        FROM arns_events
         WHERE name = $1
-        LIMIT 1
+        ORDER BY block_timestamp DESC, id DESC
+        LIMIT $2
+        OFFSET $3
       `,
-      [name]
+      [name, options.limit + 1, offset]
     );
 
-    return result.rows[0] ? mapRecord(result.rows[0]) : null;
+    return {
+      data: result.rows.slice(0, options.limit).map(mapHistoryEvent),
+      pagination: {
+        page: options.page,
+        limit: options.limit,
+        hasNextPage: result.rows.length > options.limit
+      }
+    };
   }
 
   async countByOwner(ownerAddress: string): Promise<number> {

@@ -7,6 +7,7 @@ interface AppConfig {
   host: string;
   gateArUrl: string;
   gateArFallbackUrls: string[];
+  arnsResolverUrl: string;
   redisUrl: string;
   databaseUrl: string;
   jwtSecret: string;
@@ -32,6 +33,7 @@ const config: AppConfig = {
     .split(',')
     .map((v) => v.trim())
     .filter(Boolean),
+  arnsResolverUrl: process.env.ARNS_RESOLVER_URL?.trim() || 'https://ardrive.net',
   redisUrl: requireEnv('REDIS_URL'),
   databaseUrl: requireEnv('DATABASE_URL'),
   jwtSecret: requireEnv('JWT_SECRET'),
