@@ -1,4 +1,4 @@
-import { FastifyInstance, FastifyPluginAsync } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 
 const wsRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   app.get(

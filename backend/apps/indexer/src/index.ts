@@ -1,5 +1,5 @@
 import { indexerConfig } from './config';
-import { createRedisClient } from 'phin-cache';
+import { createRedisClient, waitForRedisReady } from 'phin-cache';
 import { startBlockPoller } from './jobs/blockPoller';
 import { startGatewayMonitor } from './jobs/gatewayMonitor';
 import { startArnsSync } from './jobs/arnsSync';
@@ -16,6 +16,7 @@ async function start() {
   // Verify Redis is reachable before starting background jobs so failures are
   // caught early rather than surfacing only through log noise later.
   try {
+    await waitForRedisReady(redis);
     await redis.ping();
     console.log('Redis connection verified');
   } catch (error) {

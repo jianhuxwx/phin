@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import fastifyCors from '@fastify/cors';
 
 export async function registerCors(app: FastifyInstance, origins: string[]): Promise<void> {
@@ -6,4 +6,3 @@ export async function registerCors(app: FastifyInstance, origins: string[]): Pro
     origin: origins
   });
 }
-

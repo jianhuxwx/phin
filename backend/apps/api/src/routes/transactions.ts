@@ -1,4 +1,4 @@
-import { FastifyInstance, FastifyPluginAsync } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 
 import { getTransactionSchema, getTransactionStatusSchema } from '../schemas/transactions';
 import { createServices } from '../services/factory';

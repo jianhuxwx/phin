@@ -1,5 +1,5 @@
 import type Redis from 'ioredis';
-import { CacheKeys, TTL, createRedisClient } from 'phin-cache';
+import { CacheKeys, TTL, createRedisClient, waitForRedisReady } from 'phin-cache';
 import type { GatewayStatus, GatewayHealthStatus } from 'phin-types';
 import { publishGatewayStatus } from '../publisher';
 import { indexerConfig } from '../config';
@@ -296,7 +296,15 @@ export function startGatewayMonitor(): NodeJS.Timeout {
 
   ensureRedisClients();
 
-  runGatewayMonitorTick().catch((err) => {
+  (async () => {
+    if (redisClient) {
+      await waitForRedisReady(redisClient);
+    }
+    if (redisPubClient) {
+      await waitForRedisReady(redisPubClient);
+    }
+    await runGatewayMonitorTick();
+  })().catch((err) => {
     console.error('[GatewayMonitor] Initial tick failed', err);
   });
 

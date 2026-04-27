@@ -1,8 +1,10 @@
-import { buildApp } from './app';
+import { ensureDiagnosticsChannelCompatibility } from './polyfills/diagnostics';
 import { config } from './config';
 
 async function start() {
   try {
+    ensureDiagnosticsChannelCompatibility();
+    const { buildApp } = await import('./app.js');
     const app = await buildApp();
 
     await app.listen({
@@ -30,4 +32,3 @@ async function start() {
 }
 
 start();
-

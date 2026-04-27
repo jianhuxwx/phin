@@ -1,5 +1,5 @@
 import type Redis from 'ioredis';
-import { createRedisClient, CacheKeys, TTL, PubSubChannels } from 'phin-cache';
+import { createRedisClient, CacheKeys, TTL, PubSubChannels, waitForRedisReady } from 'phin-cache';
 import { chunkArray, withRetry } from '../utils/retry';
 
 // Sliding window for TPS calculation — last 10 blocks
@@ -1067,6 +1067,11 @@ export function startBlockPoller(): NodeJS.Timeout {
           '[BlockPoller] Poller initialisation failed: missing required clients or state'
         );
         return;
+      }
+
+      await waitForRedisReady(redisClient);
+      if (redisPubClient) {
+        await waitForRedisReady(redisPubClient);
       }
 
       const initialHeight = await readLastKnownHeight(redisClient);

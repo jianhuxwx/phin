@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import fastifyJwt from '@fastify/jwt';
 
 export async function registerJwt(app: FastifyInstance, secret: string): Promise<void> {
@@ -6,4 +6,3 @@ export async function registerJwt(app: FastifyInstance, secret: string): Promise
     secret
   });
 }
-

@@ -2,6 +2,7 @@ import type {
   ApiArnsDetail,
   ApiArnsHistoryEvent,
   ApiArnsRecord,
+  ApiArnsUndername,
   PaginatedResponse
 } from '../contracts';
 
@@ -27,6 +28,50 @@ export class ArnsService {
   async getByName(name: string): Promise<ApiArnsDetail> {
     const record = await this.repository.getByName(name);
     if (record) {
+      if (
+        this.gateway &&
+        record.processId &&
+        record.undernames.length < record.undernameCount
+      ) {
+        const liveRecords = await this.gateway.getArnsProcessRecords(record.processId);
+        if (liveRecords.length > 0) {
+          const indexedByUndername = new Map(
+            record.undernames.map((undername) => [undername.undername, undername])
+          );
+
+          for (const liveRecord of liveRecords) {
+            if (indexedByUndername.has(liveRecord.undername)) {
+              continue;
+            }
+
+            const merged: ApiArnsUndername = {
+              undername: liveRecord.undername,
+              fullName: `${liveRecord.undername}.${record.name}`,
+              targetId: liveRecord.targetId,
+              targetKind: liveRecord.targetId ? 'transaction' : null,
+              ttlSeconds: liveRecord.ttlSeconds,
+              updatedAt: record.lastUpdatedAt,
+              updateTxId: record.lastUpdateTxId
+            };
+
+            indexedByUndername.set(merged.undername, merged);
+          }
+
+          const undernames = Array.from(indexedByUndername.values()).sort((a, b) =>
+            a.undername.localeCompare(b.undername)
+          );
+
+          return {
+            ...record,
+            undernameCount: Math.max(record.undernameCount, undernames.length),
+            undernameLimitHit:
+              record.undernameLimit > 0 &&
+              Math.max(record.undernameCount, undernames.length) >= record.undernameLimit,
+            undernames
+          };
+        }
+      }
+
       return record;
     }
 

@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import fastifyHelmet from '@fastify/helmet';
 
 export async function registerHelmet(app: FastifyInstance): Promise<void> {
@@ -6,4 +6,3 @@ export async function registerHelmet(app: FastifyInstance): Promise<void> {
     contentSecurityPolicy: false
   });
 }
-

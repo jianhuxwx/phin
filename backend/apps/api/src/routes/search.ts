@@ -1,4 +1,4 @@
-import { FastifyInstance, FastifyPluginAsync } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 
 import { searchSchema, searchSuggestSchema } from '../schemas/search';
 import { createServices } from '../services/factory';

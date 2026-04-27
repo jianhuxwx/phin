@@ -1,4 +1,4 @@
-import { FastifyInstance, FastifyPluginAsync } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { sendError } from '../lib/errors';
 
 const aoRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {

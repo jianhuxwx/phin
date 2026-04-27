@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { Pool } from 'pg';
 
 import { createDatabasePool } from '../db/client';

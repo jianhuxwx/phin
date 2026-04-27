@@ -1,4 +1,4 @@
-import { FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyRequest, FastifyReply } from 'fastify';
 import { detectQueryType } from '../services/search';
 
 export async function detectQueryTypeMiddleware(
@@ -12,4 +12,3 @@ export async function detectQueryTypeMiddleware(
     (request as any).queryType = type;
   }
 }
-

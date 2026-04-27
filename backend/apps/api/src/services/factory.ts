@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 
 import { CacheRepository } from '../repositories/cache';
 import { ArnsRepository } from '../repositories/arns';

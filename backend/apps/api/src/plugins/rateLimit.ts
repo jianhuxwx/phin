@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 
 interface RateLimitOptions {
@@ -15,4 +15,3 @@ export async function registerRateLimit(
     timeWindow: options.timeWindow
   });
 }
-

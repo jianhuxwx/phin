@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 
@@ -16,4 +16,3 @@ export async function registerSwagger(app: FastifyInstance): Promise<void> {
     routePrefix: '/docs'
   });
 }
-

@@ -74,11 +74,19 @@ export interface GatewayBlocksPage {
   nextCursor: string | null;
 }
 
+export interface GatewayArnsProcessRecord {
+  undername: string;
+  targetId: string | null;
+  ttlSeconds: number | null;
+  ownerAddress: string | null;
+}
+
 export interface GatewayDataSource {
   getLatestBlocksPage(page: number, limit: number): Promise<GatewayBlocksPage>;
   getBlockById(id: string): Promise<ArweaveBlock | null>;
   getBlockByHeight(height: number): Promise<ArweaveBlock | null>;
   resolveArnsName(name: string): Promise<GatewayArnsResolution | null>;
+  getArnsProcessRecords(processId: string): Promise<GatewayArnsProcessRecord[]>;
   getBlockTransactions(
     blockId: string,
     page: number,
@@ -396,6 +404,18 @@ function mapArnsResolution(name: string, payload: any): GatewayArnsResolution | 
   };
 }
 
+function mapAntRecordEntries(payload: Record<string, any>): GatewayArnsProcessRecord[] {
+  return Object.entries(payload)
+    .filter(([undername]) => undername !== '@')
+    .map(([undername, record]) => ({
+      undername,
+      targetId: typeof record?.transactionId === 'string' ? record.transactionId : null,
+      ttlSeconds: typeof record?.ttlSeconds === 'number' ? record.ttlSeconds : null,
+      ownerAddress: typeof record?.owner === 'string' ? record.owner : null
+    }))
+    .sort((a, b) => a.undername.localeCompare(b.undername));
+}
+
 export class GatewayClient implements GatewayDataSource {
   private readonly urls: string[];
   private readonly arnsResolverUrl: string;
@@ -507,6 +527,20 @@ export class GatewayClient implements GatewayDataSource {
       return mapArnsResolution(name, await response.json());
     } catch {
       return null;
+    }
+  }
+
+  async getArnsProcessRecords(processId: string): Promise<GatewayArnsProcessRecord[]> {
+    try {
+      const { ANT } = await import('@ar.io/sdk');
+      const ant = ANT.init({ processId });
+      const records = await ant.getRecords();
+      if (!records || typeof records !== 'object') {
+        return [];
+      }
+      return mapAntRecordEntries(records as Record<string, any>);
+    } catch {
+      return [];
     }
   }
 

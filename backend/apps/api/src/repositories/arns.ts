@@ -61,6 +61,11 @@ function computeDaysRemaining(expiresAt: string | null): number | null {
   return Math.max(0, Math.ceil(diffMs / 86_400_000));
 }
 
+function isMissingSchemaError(error: unknown): boolean {
+  const pgError = error as { code?: string } | null;
+  return pgError?.code === '42703' || pgError?.code === '42P01';
+}
+
 export class ArnsRepository {
   constructor(private readonly db: Pool) {}
 
@@ -122,8 +127,66 @@ export class ArnsRepository {
   }
 
   async getByName(name: string): Promise<ApiArnsDetail | null> {
-    const [recordResult, undernamesResult] = await Promise.all([
-      this.db.query(
+    let recordResult;
+    let undernamesResult;
+
+    try {
+      [recordResult, undernamesResult] = await Promise.all([
+        this.db.query(
+          `
+            SELECT
+              name,
+              owner_address,
+              transaction_id,
+              registered_at,
+              expires_at,
+              record_type,
+              undername_limit,
+              resolved_url,
+              controller_address,
+              process_id,
+              target_id,
+              target_kind,
+              ttl_seconds,
+              registered_block_height,
+              last_updated_at,
+              last_update_tx_id,
+              purchase_price,
+              purchase_currency,
+              (
+                SELECT COUNT(*)::int
+                FROM arns_undernames
+                WHERE parent_name = arns_records.name
+              ) AS undername_count
+            FROM arns_records
+            WHERE name = $1
+            LIMIT 1
+          `,
+          [name]
+        ),
+        this.db.query(
+          `
+            SELECT
+              undername,
+              full_name,
+              target_id,
+              target_kind,
+              ttl_seconds,
+              updated_at,
+              update_tx_id
+            FROM arns_undernames
+            WHERE parent_name = $1
+            ORDER BY undername ASC
+          `,
+          [name]
+        )
+      ]);
+    } catch (error) {
+      if (!isMissingSchemaError(error)) {
+        throw error;
+      }
+
+      const legacyResult = await this.db.query(
         `
           SELECT
             name,
@@ -132,46 +195,40 @@ export class ArnsRepository {
             registered_at,
             expires_at,
             record_type,
-            undername_limit,
-            resolved_url,
-            controller_address,
-            process_id,
-            target_id,
-            target_kind,
-            ttl_seconds,
-            registered_block_height,
-            last_updated_at,
-            last_update_tx_id,
-            purchase_price,
-            purchase_currency,
-            (
-              SELECT COUNT(*)::int
-              FROM arns_undernames
-              WHERE parent_name = arns_records.name
-            ) AS undername_count
+            undername_limit
           FROM arns_records
           WHERE name = $1
           LIMIT 1
         `,
         [name]
-      ),
-      this.db.query(
-        `
-          SELECT
-            undername,
-            full_name,
-            target_id,
-            target_kind,
-            ttl_seconds,
-            updated_at,
-            update_tx_id
-          FROM arns_undernames
-          WHERE parent_name = $1
-          ORDER BY undername ASC
-        `,
-        [name]
-      )
-    ]);
+      );
+
+      const row = legacyResult.rows[0];
+      if (!row) {
+        return null;
+      }
+
+      const base = mapRecord(row);
+
+      return {
+        ...base,
+        resolvedUrl: `${base.name}.ar.io`,
+        controllerAddress: null,
+        processId: null,
+        targetId: base.transactionId,
+        targetKind: 'transaction',
+        ttlSeconds: null,
+        registeredBlockHeight: null,
+        lastUpdatedAt: base.registeredAt,
+        lastUpdateTxId: base.transactionId,
+        purchasePrice: null,
+        purchaseCurrency: null,
+        undernameCount: 0,
+        undernameLimitHit: false,
+        daysRemaining: computeDaysRemaining(base.expiresAt),
+        undernames: []
+      };
+    }
 
     const row = recordResult.rows[0];
     if (!row) {
@@ -206,29 +263,45 @@ export class ArnsRepository {
     options: { page: number; limit: number }
   ): Promise<PaginatedResponse<ApiArnsHistoryEvent>> {
     const offset = (options.page - 1) * options.limit;
-    const result = await this.db.query(
-      `
-        SELECT
-          event_tx_id,
-          event_type,
-          owner_address,
-          controller_address,
-          target_id,
-          target_kind,
-          ttl_seconds,
-          expires_at,
-          purchase_price,
-          purchase_currency,
-          block_height,
-          block_timestamp
-        FROM arns_events
-        WHERE name = $1
-        ORDER BY block_timestamp DESC, id DESC
-        LIMIT $2
-        OFFSET $3
-      `,
-      [name, options.limit + 1, offset]
-    );
+    let result;
+    try {
+      result = await this.db.query(
+        `
+          SELECT
+            event_tx_id,
+            event_type,
+            owner_address,
+            controller_address,
+            target_id,
+            target_kind,
+            ttl_seconds,
+            expires_at,
+            purchase_price,
+            purchase_currency,
+            block_height,
+            block_timestamp
+          FROM arns_events
+          WHERE name = $1
+          ORDER BY block_timestamp DESC, id DESC
+          LIMIT $2
+          OFFSET $3
+        `,
+        [name, options.limit + 1, offset]
+      );
+    } catch (error) {
+      if (!isMissingSchemaError(error)) {
+        throw error;
+      }
+
+      return {
+        data: [],
+        pagination: {
+          page: options.page,
+          limit: options.limit,
+          hasNextPage: false
+        }
+      };
+    }
 
     return {
       data: result.rows.slice(0, options.limit).map(mapHistoryEvent),

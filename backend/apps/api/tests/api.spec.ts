@@ -23,6 +23,20 @@ class FakeRedis {
   disconnect() {}
 }
 
+class ThrowingRedis extends FakeRedis {
+  constructor() {
+    super({}, {});
+  }
+
+  override async get(_key: string) {
+    throw new Error('ECONNRESET');
+  }
+
+  override async lrange(_key: string, _start: number, _end: number) {
+    throw new Error('ECONNRESET');
+  }
+}
+
 class FakeDb {
   async query(sql: string, params: unknown[]) {
     if (sql.includes('FROM arns_undernames') && !sql.includes('FROM arns_records')) {
@@ -109,7 +123,7 @@ class FakeDb {
               last_update_tx_id: 'hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
               purchase_price: '15',
               purchase_currency: 'AR',
-              undername_count: 1
+              undername_count: 2
             }
           ]
         };
@@ -138,6 +152,22 @@ class FakeDb {
   }
 
   async end() {}
+}
+
+class LegacySchemaDb extends FakeDb {
+  override async query(sql: string, params: unknown[]) {
+    if (sql.includes('resolved_url') || sql.includes('FROM arns_events') || sql.includes('FROM arns_undernames')) {
+      const error = new Error(
+        sql.includes('resolved_url')
+          ? 'column "resolved_url" does not exist'
+          : 'relation does not exist'
+      ) as Error & { code?: string };
+      error.code = sql.includes('resolved_url') ? '42703' : '42P01';
+      throw error;
+    }
+
+    return await super.query(sql, params);
+  }
 }
 
 const gateway = {
@@ -223,6 +253,26 @@ const gateway = {
     }
 
     return null;
+  },
+  async getArnsProcessRecords(processId: string) {
+    if (processId === 'ppppppppppppppppppppppppppppppppppppppppppp') {
+      return [
+        {
+          undername: 'blog',
+          targetId: 'mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm',
+          ttlSeconds: 1200,
+          ownerAddress: WALLET
+        },
+        {
+          undername: 'docs',
+          targetId: 'uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu',
+          ttlSeconds: 300,
+          ownerAddress: WALLET
+        }
+      ];
+    }
+
+    return [];
   },
   async getTransaction(id: string) {
     if (id === 'ddddddddddddddddddddddddddddddddddddddddddd') {
@@ -425,6 +475,26 @@ test('falls back to gateway blocks when cached recent blocks are only a partial 
   await app.close();
 });
 
+test('falls back to gateway blocks when Redis cache reads fail', async () => {
+  const buildApp = await loadBuildApp();
+  const app = await buildApp({
+    fastify: { logger: false },
+    redis: new ThrowingRedis() as any,
+    db: new FakeDb() as any,
+    gateway: gateway as any,
+    enableSwagger: false,
+    enableWebsocket: false
+  });
+
+  const response = await app.inject({ method: 'GET', url: '/v1/blocks?limit=2' });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.data.length, 2);
+  assert.equal(payload.data[0].height, 100);
+  assert.equal(payload.data[1].height, 99);
+  await app.close();
+});
+
 test('paginates gateway blocks beyond page one', async () => {
   const app = await createTestApp();
   const response = await app.inject({ method: 'GET', url: '/v1/blocks?page=2&limit=1' });
@@ -614,6 +684,25 @@ test('ignores stale cached network stats with zero weave size', async () => {
   await app.close();
 });
 
+test('falls back to live network stats when Redis cache reads fail', async () => {
+  const buildApp = await loadBuildApp();
+  const app = await buildApp({
+    fastify: { logger: false },
+    redis: new ThrowingRedis() as any,
+    db: new FakeDb() as any,
+    gateway: gateway as any,
+    enableSwagger: false,
+    enableWebsocket: false
+  });
+
+  const response = await app.inject({ method: 'GET', url: '/v1/network/stats' });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.blockHeight, 100);
+  assert.equal(payload.weaveSize, '123');
+  await app.close();
+});
+
 test('falls back to live gateway statuses when cache is empty', async () => {
   const buildApp = await loadBuildApp();
   const app = await buildApp({
@@ -651,9 +740,43 @@ test('returns ArNS detail from Postgres', async () => {
   assert.equal(payload.controllerAddress, 'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii');
   assert.equal(payload.targetId, TX_ID);
   assert.equal(payload.ttlSeconds, 900);
-  assert.equal(payload.undernameCount, 1);
-  assert.equal(payload.undernames.length, 1);
-  assert.equal(payload.undernames[0].fullName, 'docs.alice');
+  assert.equal(payload.undernameCount, 2);
+  assert.equal(payload.undernames.length, 2);
+  assert.equal(payload.undernames[1].fullName, 'docs.alice');
+  await app.close();
+});
+
+test('merges live ANT undernames when indexed list is incomplete', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: '/v1/arns/alice' });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.undernameCount, 2);
+  assert.equal(payload.undernames.length, 2);
+  assert.equal(payload.undernames[0].undername, 'blog');
+  assert.equal(payload.undernames[0].fullName, 'blog.alice');
+  assert.equal(payload.undernames[1].undername, 'docs');
+  await app.close();
+});
+
+test('falls back to legacy ArNS schema when 4.3 columns are missing', async () => {
+  const buildApp = await loadBuildApp();
+  const app = await buildApp({
+    fastify: { logger: false },
+    redis: new FakeRedis({}, {}) as any,
+    db: new LegacySchemaDb() as any,
+    gateway: gateway as any,
+    enableSwagger: false,
+    enableWebsocket: false
+  });
+
+  const response = await app.inject({ method: 'GET', url: '/v1/arns/alice' });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.name, 'alice');
+  assert.equal(payload.resolvedUrl, 'alice.ar.io');
+  assert.equal(payload.targetId, TX_ID);
+  assert.equal(payload.undernames.length, 0);
   await app.close();
 });
 

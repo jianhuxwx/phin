@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import blocksRoutes from './blocks';
 import transactionsRoutes from './transactions';
 import walletsRoutes from './wallets';

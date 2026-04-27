@@ -1,8 +1,7 @@
 import { ensureDiagnosticsChannelCompatibility } from './polyfills/diagnostics';
-import Fastify, { FastifyServerOptions } from 'fastify';
 import type Redis from 'ioredis';
 import type { Pool } from 'pg';
-import fastifySensible from '@fastify/sensible';
+import type { FastifyServerOptions } from 'fastify';
 import { config } from './config';
 import { registerCors } from './plugins/cors';
 import { registerHelmet } from './plugins/helmet';
@@ -28,6 +27,11 @@ export interface BuildAppOptions {
 }
 
 export async function buildApp(options: BuildAppOptions = {}) {
+  const [{ default: Fastify }, { default: fastifySensible }] = await Promise.all([
+    import('fastify'),
+    import('@fastify/sensible')
+  ]);
+
   const app = Fastify({
     logger: true,
     ...options.fastify

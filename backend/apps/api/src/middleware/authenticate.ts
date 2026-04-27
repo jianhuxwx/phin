@@ -1,4 +1,4 @@
-import { FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyRequest, FastifyReply } from 'fastify';
 
 export async function authenticate(
   request: FastifyRequest,
@@ -8,4 +8,3 @@ export async function authenticate(
   void request;
   void reply;
 }
-
