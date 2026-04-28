@@ -1,7 +1,6 @@
 import type { Pool } from 'pg';
 import type {
   ApiArnsDetail,
-  ApiArnsHistoryEvent,
   ApiArnsRecord,
   ApiArnsUndername,
   PaginatedResponse
@@ -30,25 +29,13 @@ function mapUndername(row: any): ApiArnsUndername {
     targetId: row.target_id,
     targetKind: row.target_kind,
     ttlSeconds: row.ttl_seconds,
+    ownerAddress: null,
+    displayName: null,
+    logo: null,
+    description: null,
+    keywords: [],
     updatedAt: new Date(row.updated_at).toISOString(),
     updateTxId: row.update_tx_id
-  };
-}
-
-function mapHistoryEvent(row: any): ApiArnsHistoryEvent {
-  return {
-    eventTxId: row.event_tx_id,
-    eventType: row.event_type,
-    ownerAddress: row.owner_address,
-    controllerAddress: row.controller_address,
-    targetId: row.target_id,
-    targetKind: row.target_kind,
-    ttlSeconds: row.ttl_seconds,
-    expiresAt: toIso(row.expires_at),
-    purchasePrice: row.purchase_price,
-    purchaseCurrency: row.purchase_currency,
-    blockHeight: row.block_height,
-    blockTimestamp: new Date(row.block_timestamp).toISOString()
   };
 }
 
@@ -214,6 +201,8 @@ export class ArnsRepository {
         ...base,
         resolvedUrl: `${base.name}.ar.io`,
         controllerAddress: null,
+        processOwnerAddress: null,
+        controllerAddresses: [],
         processId: null,
         targetId: base.transactionId,
         targetKind: 'transaction',
@@ -232,7 +221,65 @@ export class ArnsRepository {
 
     const row = recordResult.rows[0];
     if (!row) {
-      return null;
+      const undernameResult = await this.db.query(
+        `
+          SELECT
+            undername.full_name,
+            undername.parent_name,
+            undername.undername,
+            undername.target_id,
+            undername.target_kind,
+            undername.ttl_seconds,
+            undername.updated_at,
+            undername.update_tx_id,
+            parent.owner_address,
+            parent.record_type,
+            parent.resolved_url AS parent_resolved_url,
+            parent.controller_address,
+            parent.process_id,
+            parent.purchase_currency
+          FROM arns_undernames undername
+          LEFT JOIN arns_records parent
+            ON parent.name = undername.parent_name
+          WHERE undername.full_name = $1
+          LIMIT 1
+        `,
+        [name]
+      );
+
+      const undername = undernameResult.rows[0];
+      if (!undername) {
+        return null;
+      }
+
+      const updatedAt = new Date(undername.updated_at).toISOString();
+
+      return {
+        name: undername.full_name,
+        ownerAddress: undername.owner_address ?? '',
+        transactionId: undername.update_tx_id,
+        registeredAt: updatedAt,
+        expiresAt: null,
+        recordType: 'undername',
+        undernameLimit: 0,
+        resolvedUrl: `${undername.full_name}.ar.io`,
+        controllerAddress: undername.controller_address,
+        processOwnerAddress: null,
+        controllerAddresses: [],
+        processId: undername.process_id,
+        targetId: undername.target_id,
+        targetKind: undername.target_kind,
+        ttlSeconds: undername.ttl_seconds,
+        registeredBlockHeight: null,
+        lastUpdatedAt: updatedAt,
+        lastUpdateTxId: undername.update_tx_id,
+        purchasePrice: null,
+        purchaseCurrency: undername.purchase_currency,
+        undernameCount: 0,
+        undernameLimitHit: false,
+        daysRemaining: null,
+        undernames: []
+      };
     }
 
     const base = mapRecord(row);
@@ -242,6 +289,8 @@ export class ArnsRepository {
       ...base,
       resolvedUrl: row.resolved_url,
       controllerAddress: row.controller_address,
+      processOwnerAddress: null,
+      controllerAddresses: [],
       processId: row.process_id,
       targetId: row.target_id,
       targetKind: row.target_kind,
@@ -255,61 +304,6 @@ export class ArnsRepository {
       undernameLimitHit: row.undername_limit > 0 && undernameCount >= row.undername_limit,
       daysRemaining: computeDaysRemaining(base.expiresAt),
       undernames: undernamesResult.rows.map(mapUndername)
-    };
-  }
-
-  async getHistory(
-    name: string,
-    options: { page: number; limit: number }
-  ): Promise<PaginatedResponse<ApiArnsHistoryEvent>> {
-    const offset = (options.page - 1) * options.limit;
-    let result;
-    try {
-      result = await this.db.query(
-        `
-          SELECT
-            event_tx_id,
-            event_type,
-            owner_address,
-            controller_address,
-            target_id,
-            target_kind,
-            ttl_seconds,
-            expires_at,
-            purchase_price,
-            purchase_currency,
-            block_height,
-            block_timestamp
-          FROM arns_events
-          WHERE name = $1
-          ORDER BY block_timestamp DESC, id DESC
-          LIMIT $2
-          OFFSET $3
-        `,
-        [name, options.limit + 1, offset]
-      );
-    } catch (error) {
-      if (!isMissingSchemaError(error)) {
-        throw error;
-      }
-
-      return {
-        data: [],
-        pagination: {
-          page: options.page,
-          limit: options.limit,
-          hasNextPage: false
-        }
-      };
-    }
-
-    return {
-      data: result.rows.slice(0, options.limit).map(mapHistoryEvent),
-      pagination: {
-        page: options.page,
-        limit: options.limit,
-        hasNextPage: result.rows.length > options.limit
-      }
     };
   }
 

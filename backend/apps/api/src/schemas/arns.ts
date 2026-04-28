@@ -22,14 +22,3 @@ export const getArnsByNameSchema = {
     required: ['name']
   }
 };
-
-export const getArnsHistorySchema = {
-  ...getArnsByNameSchema,
-  querystring: {
-    type: 'object',
-    properties: {
-      page: paginationSchema.properties.page,
-      limit: paginationSchema.properties.limit
-    }
-  }
-};

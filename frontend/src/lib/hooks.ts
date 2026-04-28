@@ -69,10 +69,3 @@ export function useArns(page = 1, search?: string) {
 export function useArnsRecord(name: string) {
   return useSWR(name ? ['arns-record', name] : null, () => api.getArnsRecord(name))
 }
-
-export function useArnsHistory(name: string, page = 1, limit = 20) {
-  return useSWR(
-    name ? ['arns-history', name, page, limit] : null,
-    () => api.getArnsHistory(name, page, limit)
-  )
-}

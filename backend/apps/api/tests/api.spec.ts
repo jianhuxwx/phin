@@ -61,37 +61,25 @@ class FakeDb {
       }
     }
 
-    if (sql.includes('FROM arns_events')) {
-      if (params[0] === 'alice') {
+    if (sql.includes('WHERE undername.full_name = $1')) {
+      if (params[0] === 'docs.alice') {
         return {
           rows: [
             {
-              event_tx_id: 'hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
-              event_type: 'target_update',
-              owner_address: WALLET,
-              controller_address: 'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii',
-              target_id: TX_ID,
+              undername: 'docs',
+              full_name: 'docs.alice',
+              parent_name: 'alice',
+              target_id: 'uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu',
               target_kind: 'transaction',
-              ttl_seconds: 900,
-              expires_at: null,
-              purchase_price: null,
-              purchase_currency: null,
-              block_height: 111,
-              block_timestamp: '2026-04-14T00:00:00.000Z'
-            },
-            {
-              event_tx_id: 'ggggggggggggggggggggggggggggggggggggggggggg',
-              event_type: 'register',
+              ttl_seconds: 300,
+              updated_at: '2026-04-12T00:00:00.000Z',
+              update_tx_id: 'vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv',
               owner_address: WALLET,
-              controller_address: null,
-              target_id: null,
-              target_kind: null,
-              ttl_seconds: null,
-              expires_at: null,
-              purchase_price: '15',
-              purchase_currency: 'AR',
-              block_height: 100,
-              block_timestamp: '2026-04-10T00:00:00.000Z'
+              record_type: 'lease',
+              resolved_url: 'alice.ar.io',
+              controller_address: 'iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii',
+              process_id: 'ppppppppppppppppppppppppppppppppppppppppppp',
+              purchase_currency: null
             }
           ]
         };
@@ -124,6 +112,34 @@ class FakeDb {
               purchase_price: '15',
               purchase_currency: 'AR',
               undername_count: 2
+            }
+          ]
+        };
+      }
+
+      if (params[0] === 'metalinks') {
+        return {
+          rows: [
+            {
+              name: 'metalinks',
+              owner_address: WALLET,
+              transaction_id: TX_ID,
+              registered_at: '2026-04-10T00:00:00.000Z',
+              expires_at: null,
+              record_type: 'permanent',
+              undername_limit: 0,
+              resolved_url: 'metalinks.ar.io',
+              controller_address: null,
+              process_id: null,
+              target_id: null,
+              target_kind: null,
+              ttl_seconds: null,
+              registered_block_height: 100,
+              last_updated_at: '2026-04-14T00:00:00.000Z',
+              last_update_tx_id: TX_ID,
+              purchase_price: null,
+              purchase_currency: null,
+              undername_count: 0
             }
           ]
         };
@@ -241,7 +257,7 @@ const gateway = {
     };
   },
   async resolveArnsName(name: string) {
-    if (name === 'arlink') {
+    if (name === 'arlink' || name === 'metalinks') {
       return {
         name,
         processId: 'ppppppppppppppppppppppppppppppppppppppppppp',
@@ -746,6 +762,18 @@ test('returns ArNS detail from Postgres', async () => {
   await app.close();
 });
 
+test('returns indexed ArNS undername detail from Postgres', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: '/v1/arns/docs.alice' });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.name, 'docs.alice');
+  assert.equal(payload.recordType, 'undername');
+  assert.equal(payload.targetId, 'uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu');
+  assert.equal(payload.ttlSeconds, 300);
+  await app.close();
+});
+
 test('merges live ANT undernames when indexed list is incomplete', async () => {
   const app = await createTestApp();
   const response = await app.inject({ method: 'GET', url: '/v1/arns/alice' });
@@ -756,6 +784,33 @@ test('merges live ANT undernames when indexed list is incomplete', async () => {
   assert.equal(payload.undernames[0].undername, 'blog');
   assert.equal(payload.undernames[0].fullName, 'blog.alice');
   assert.equal(payload.undernames[1].undername, 'docs');
+  await app.close();
+});
+
+test('hydrates live ANT undernames when indexed ArNS record lacks a process id', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: '/v1/arns/metalinks' });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.name, 'metalinks');
+  assert.equal(payload.processId, 'ppppppppppppppppppppppppppppppppppppppppppp');
+  assert.equal(payload.undernameLimit, 25);
+  assert.equal(payload.undernameCount, 2);
+  assert.equal(payload.undernames[0].fullName, 'blog.metalinks');
+  await app.close();
+});
+
+test('returns live ANT undername detail when dotted ArNS name is not indexed', async () => {
+  const app = await createTestApp();
+  const response = await app.inject({ method: 'GET', url: '/v1/arns/blog.metalinks' });
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.name, 'blog.metalinks');
+  assert.equal(payload.recordType, 'undername');
+  assert.equal(payload.resolvedUrl, 'blog_metalinks.ar.io');
+  assert.equal(payload.processId, 'ppppppppppppppppppppppppppppppppppppppppppp');
+  assert.equal(payload.targetId, 'mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm');
+  assert.equal(payload.ttlSeconds, 1200);
   await app.close();
 });
 
@@ -792,17 +847,6 @@ test('falls back to live gateway ArNS resolution when Postgres misses the name',
   assert.equal(payload.undernameLimit, 25);
   assert.equal(payload.processId, 'ppppppppppppppppppppppppppppppppppppppppppp');
   assert.equal(payload.ttlSeconds, 900);
-  await app.close();
-});
-
-test('returns ArNS history from Postgres', async () => {
-  const app = await createTestApp();
-  const response = await app.inject({ method: 'GET', url: '/v1/arns/alice/history?page=1&limit=20' });
-  assert.equal(response.statusCode, 200);
-  const payload = response.json();
-  assert.equal(payload.data.length, 2);
-  assert.equal(payload.data[0].eventType, 'target_update');
-  assert.equal(payload.data[1].purchasePrice, '15');
   await app.close();
 });
 

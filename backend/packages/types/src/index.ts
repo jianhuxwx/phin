@@ -97,6 +97,7 @@ export interface ArNSEvent {
     | 'target_update'
     | 'controller_update'
     | 'undername_set'
+    | 'undername_limit_update'
     | 'update';
   ownerAddress: string | null;
   controllerAddress: string | null;
@@ -220,37 +221,20 @@ export interface ApiArnsUndername {
   targetId: string | null;
   targetKind: 'transaction' | 'process' | null;
   ttlSeconds: number | null;
+  ownerAddress: string | null;
+  displayName: string | null;
+  logo: string | null;
+  description: string | null;
+  keywords: string[];
   updatedAt: string;
   updateTxId: string;
-}
-
-export interface ApiArnsHistoryEvent {
-  eventTxId: string;
-  eventType:
-    | 'register'
-    | 'purchase'
-    | 'lease_start'
-    | 'renewal'
-    | 'transfer'
-    | 'target_update'
-    | 'controller_update'
-    | 'undername_set'
-    | 'update';
-  ownerAddress: string | null;
-  controllerAddress: string | null;
-  targetId: string | null;
-  targetKind: 'transaction' | 'process' | null;
-  ttlSeconds: number | null;
-  expiresAt: string | null;
-  purchasePrice: string | null;
-  purchaseCurrency: string | null;
-  blockHeight: number | null;
-  blockTimestamp: string;
 }
 
 export interface ApiArnsDetail extends ApiArnsRecord {
   resolvedUrl: string;
   controllerAddress: string | null;
+  processOwnerAddress: string | null;
+  controllerAddresses: string[];
   processId: string | null;
   targetId: string | null;
   targetKind: 'transaction' | 'process' | null;

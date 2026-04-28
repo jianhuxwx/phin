@@ -8,7 +8,6 @@ import type {
   ApiWalletSummary,
   ApiNetworkStats,
   ApiArnsDetail,
-  ApiArnsHistoryEvent,
   ApiArnsRecord,
   ApiGatewayStatus,
   SearchResult,
@@ -92,9 +91,4 @@ export const getArns = (page = 1, limit = 20, search?: string) => {
 }
 
 export const getArnsRecord = (name: string) =>
-  apiFetch<ApiArnsDetail>(`/v1/arns/${name}`)
-
-export const getArnsHistory = (name: string, page = 1, limit = 20) =>
-  apiFetch<PaginatedResponse<ApiArnsHistoryEvent>>(
-    `/v1/arns/${name}/history?page=${page}&limit=${limit}`
-  )
+  apiFetch<ApiArnsDetail>(`/v1/arns/${encodeURIComponent(name)}`)

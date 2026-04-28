@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useArnsHistory, useArnsRecord } from '@/lib/hooks'
+import { useArnsRecord } from '@/lib/hooks'
 import { formatNumber, formatTTL } from '@/lib/format'
 import Hash from '@/components/ui/Hash'
 import Badge from '@/components/ui/Badge'
@@ -25,40 +25,29 @@ function formatDateTime(value: string | null): string {
   })
 }
 
-function eventLabel(eventType: string): string {
-  switch (eventType) {
-    case 'target_update':
-      return 'Target Update'
-    case 'controller_update':
-      return 'Controller Update'
-    case 'undername_set':
-      return 'Undername Set'
-    case 'renewal':
-      return 'Renewal'
-    case 'transfer':
-      return 'Transfer'
-    case 'register':
-      return 'Registration'
-    case 'purchase':
-      return 'Purchase'
-    default:
-      return 'Update'
-  }
-}
-
 function targetHref(targetId: string | null, targetKind: 'transaction' | 'process' | null): string | undefined {
   if (!targetId) return undefined
   return targetKind === 'transaction' ? `/tx/${targetId}` : undefined
 }
 
+const UNDERNAMES_PER_PAGE = 20
+
 export default function ArnsNamePage({ params }: ArnsNamePageProps) {
-  const { name } = params
-  const [historyPage, setHistoryPage] = useState(1)
+  const name = decodeURIComponent(params.name)
+  const [undernamePage, setUndernamePage] = useState(1)
   const { data: record, isLoading, error } = useArnsRecord(name)
-  const { data: historyData, isLoading: historyLoading } = useArnsHistory(name, historyPage, 20)
+  const undernameCount = record?.undernames.length ?? 0
+  const undernamePageCount = Math.max(1, Math.ceil(undernameCount / UNDERNAMES_PER_PAGE))
+  const safeUndernamePage = Math.min(undernamePage, undernamePageCount)
+  const undernamePageStart = (safeUndernamePage - 1) * UNDERNAMES_PER_PAGE
+  const visibleUndernames =
+    record?.undernames.slice(undernamePageStart, undernamePageStart + UNDERNAMES_PER_PAGE) ?? []
 
   const typeSummary = (() => {
     if (!record) return '—'
+    if (record.recordType === 'undername') {
+      return 'Undername record'
+    }
     if (record.recordType === 'lease') {
       const expires = record.expiresAt ? new Date(record.expiresAt).toLocaleDateString() : 'Unknown'
       const days = record.daysRemaining != null ? `${record.daysRemaining}d remaining` : 'Days unknown'
@@ -85,7 +74,7 @@ export default function ArnsNamePage({ params }: ArnsNamePageProps) {
           ) : (
             <Skeleton className="h-6 w-32" />
           )}
-          {record ? <Badge label={record.recordType === 'lease' ? 'Lease' : 'Permanent'} variant="accent" /> : null}
+          {record ? <Badge label={record.recordType === 'undername' ? 'Undername' : record.recordType === 'lease' ? 'Lease' : 'Permanent'} variant="accent" /> : null}
         </div>
         <p className="text-sm text-tx-muted">
           {record ? record.resolvedUrl : 'Loading resolved URL…'}
@@ -147,6 +136,22 @@ export default function ArnsNamePage({ params }: ArnsNamePageProps) {
                 value: record.processId ? <Hash value={record.processId} head={16} tail={12} /> : '—',
               },
               {
+                label: 'Process Owner',
+                value: record.processOwnerAddress ? (
+                  <Hash value={record.processOwnerAddress} href={`/wallet/${record.processOwnerAddress}`} head={16} tail={12} />
+                ) : '—',
+              },
+              {
+                label: 'Controllers',
+                value: record.controllerAddresses.length ? (
+                  <span className="flex flex-col gap-1">
+                    {record.controllerAddresses.map((controller) => (
+                      <Hash key={controller} value={controller} href={`/wallet/${controller}`} head={16} tail={12} />
+                    ))}
+                  </span>
+                ) : '—',
+              },
+              {
                 label: 'Registered',
                 value: (
                   <span>
@@ -181,7 +186,11 @@ export default function ArnsNamePage({ params }: ArnsNamePageProps) {
             {record?.undernameLimitHit ? <p className="text-xs text-status-pending mt-1">Undername limit has been hit.</p> : null}
           </div>
           <p className="text-sm text-tx-muted">
-            {record ? `${formatNumber(record.undernameCount)} current` : '—'}
+            {record
+              ? `${formatNumber(record.undernameCount)} current${
+                  undernameCount ? ` · showing ${formatNumber(undernamePageStart + 1)}-${formatNumber(undernamePageStart + visibleUndernames.length)}` : ''
+                }`
+              : '—'}
           </p>
         </div>
         <table className="data-table">
@@ -190,6 +199,8 @@ export default function ArnsNamePage({ params }: ArnsNamePageProps) {
               <th>Undername</th>
               <th>Full Name</th>
               <th>Target</th>
+              <th>Owner</th>
+              <th>Metadata</th>
               <th>TTL</th>
             </tr>
           </thead>
@@ -197,13 +208,13 @@ export default function ArnsNamePage({ params }: ArnsNamePageProps) {
             {isLoading ? (
               Array.from({ length: 4 }).map((_, i) => (
                 <tr key={i}>
-                  {Array.from({ length: 4 }).map((_, j) => (
+                  {Array.from({ length: 6 }).map((_, j) => (
                     <td key={j}><Skeleton className="h-4 w-full" /></td>
                   ))}
                 </tr>
               ))
-            ) : record?.undernames.length ? (
-              record.undernames.map((undername) => (
+            ) : visibleUndernames.length ? (
+              visibleUndernames.map((undername) => (
                 <tr key={undername.fullName}>
                   <td className="font-mono text-tx-primary">{undername.undername}</td>
                   <td>
@@ -216,6 +227,24 @@ export default function ArnsNamePage({ params }: ArnsNamePageProps) {
                       <Hash value={undername.targetId} href={targetHref(undername.targetId, undername.targetKind)} />
                     ) : '—'}
                   </td>
+                  <td>
+                    {undername.ownerAddress ? (
+                      <Hash value={undername.ownerAddress} href={`/wallet/${undername.ownerAddress}`} />
+                    ) : (
+                      <span className="text-tx-muted">ANT owner</span>
+                    )}
+                  </td>
+                  <td className="text-sm">
+                    {undername.displayName || undername.description || undername.keywords.length ? (
+                      <div className="flex flex-col gap-1">
+                        {undername.displayName ? <span className="text-tx-primary">{undername.displayName}</span> : null}
+                        {undername.description ? <span className="text-tx-muted">{undername.description}</span> : null}
+                        {undername.keywords.length ? (
+                          <span className="text-xs text-tx-muted">{undername.keywords.join(', ')}</span>
+                        ) : null}
+                      </div>
+                    ) : '—'}
+                  </td>
                   <td className="text-tx-muted text-sm">
                     {undername.ttlSeconds != null ? formatTTL(undername.ttlSeconds) : '—'}
                   </td>
@@ -223,89 +252,18 @@ export default function ArnsNamePage({ params }: ArnsNamePageProps) {
               ))
             ) : (
               <tr>
-                <td colSpan={4} className="text-center text-tx-muted py-8">No undernames indexed</td>
+                <td colSpan={6} className="text-center text-tx-muted py-8">No undernames indexed</td>
               </tr>
             )}
           </tbody>
         </table>
-      </div>
-
-      <div className="bg-bg-card border border-bg-border rounded-lg overflow-hidden">
-        <div className="px-5 py-4 border-b border-bg-border">
-          <h2 className="text-xs font-semibold text-tx-muted uppercase tracking-wider">History</h2>
-        </div>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Event</th>
-              <th>Timestamp</th>
-              <th>Owner / Controller</th>
-              <th>Target</th>
-            </tr>
-          </thead>
-          <tbody>
-            {historyLoading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i}>
-                  {Array.from({ length: 4 }).map((_, j) => (
-                    <td key={j}><Skeleton className="h-4 w-full" /></td>
-                  ))}
-                </tr>
-              ))
-            ) : historyData?.data.length ? (
-              historyData.data.map((event) => (
-                <tr key={`${event.eventTxId}-${event.eventType}`}>
-                  <td>
-                    <div className="flex flex-col gap-1">
-                      <Badge label={eventLabel(event.eventType)} variant="accent" />
-                      <Hash value={event.eventTxId} href={`/tx/${event.eventTxId}`} />
-                    </div>
-                  </td>
-                  <td className="text-sm text-tx-primary">
-                    <div>{formatDateTime(event.blockTimestamp)}</div>
-                    <div className="text-xs text-tx-muted">
-                      {event.blockHeight != null ? `Block ${formatNumber(event.blockHeight)}` : 'Unconfirmed'}
-                    </div>
-                  </td>
-                  <td className="text-sm text-tx-primary">
-                    <div>
-                      {event.ownerAddress ? (
-                        <Hash value={event.ownerAddress} href={`/wallet/${event.ownerAddress}`} />
-                      ) : '—'}
-                    </div>
-                    {event.controllerAddress && event.controllerAddress !== event.ownerAddress ? (
-                      <div className="mt-1">
-                        <Hash value={event.controllerAddress} href={`/wallet/${event.controllerAddress}`} />
-                      </div>
-                    ) : null}
-                  </td>
-                  <td className="text-sm text-tx-primary">
-                    {event.targetId ? (
-                      <Hash value={event.targetId} href={targetHref(event.targetId, event.targetKind)} />
-                    ) : event.purchasePrice ? (
-                      `${event.purchasePrice}${event.purchaseCurrency ? ` ${event.purchaseCurrency}` : ''}`
-                    ) : event.expiresAt ? (
-                      `Expires ${formatDateTime(event.expiresAt)}`
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={4} className="text-center text-tx-muted py-8">No ArNS history indexed</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-        {historyData ? (
+        {undernameCount > UNDERNAMES_PER_PAGE ? (
           <div className="p-4 border-t border-bg-border">
             <Pagination
-              page={historyPage}
-              hasNextPage={historyData.pagination.hasNextPage}
-              onPrev={() => setHistoryPage((page) => Math.max(1, page - 1))}
-              onNext={() => setHistoryPage((page) => page + 1)}
+              page={safeUndernamePage}
+              hasNextPage={safeUndernamePage < undernamePageCount}
+              onPrev={() => setUndernamePage(Math.max(1, safeUndernamePage - 1))}
+              onNext={() => setUndernamePage(Math.min(undernamePageCount, safeUndernamePage + 1))}
             />
           </div>
         ) : null}

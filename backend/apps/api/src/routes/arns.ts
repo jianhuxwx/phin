@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 
 import { getPagination } from '../lib/pagination';
-import { getArnsByNameSchema, getArnsHistorySchema, listArnsSchema } from '../schemas/arns';
+import { getArnsByNameSchema, listArnsSchema } from '../schemas/arns';
 import { createServices } from '../services/factory';
 
 const arnsRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
@@ -30,17 +30,6 @@ const arnsRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
     return await arns.getByName(params.name);
   });
 
-  app.get('/arns/:name/history', { schema: getArnsHistorySchema }, async (request) => {
-    const { arns } = createServices(app);
-    const params = request.params as { name: string };
-    const query = request.query as { page?: number; limit?: number };
-    const pagination = getPagination(query);
-
-    return await arns.getHistory(params.name, {
-      page: pagination.page,
-      limit: pagination.limit
-    });
-  });
 };
 
 export default arnsRoutes;

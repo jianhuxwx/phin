@@ -79,6 +79,16 @@ export interface GatewayArnsProcessRecord {
   targetId: string | null;
   ttlSeconds: number | null;
   ownerAddress: string | null;
+  displayName: string | null;
+  logo: string | null;
+  description: string | null;
+  keywords: string[];
+}
+
+export interface GatewayArnsProcessInfo {
+  ownerAddress: string | null;
+  controllerAddresses: string[];
+  records: GatewayArnsProcessRecord[];
 }
 
 export interface GatewayDataSource {
@@ -87,6 +97,7 @@ export interface GatewayDataSource {
   getBlockByHeight(height: number): Promise<ArweaveBlock | null>;
   resolveArnsName(name: string): Promise<GatewayArnsResolution | null>;
   getArnsProcessRecords(processId: string): Promise<GatewayArnsProcessRecord[]>;
+  getArnsProcessInfo?(processId: string): Promise<GatewayArnsProcessInfo | null>;
   getBlockTransactions(
     blockId: string,
     page: number,
@@ -317,6 +328,12 @@ function toNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
+function getAntRecordKeywords(record: any): string[] {
+  return Array.isArray(record?.keywords)
+    ? record.keywords.filter((keyword: unknown): keyword is string => typeof keyword === 'string')
+    : [];
+}
+
 function mapBlock(block: any): ArweaveBlock {
   return {
     id: block.id,
@@ -411,7 +428,11 @@ function mapAntRecordEntries(payload: Record<string, any>): GatewayArnsProcessRe
       undername,
       targetId: typeof record?.transactionId === 'string' ? record.transactionId : null,
       ttlSeconds: typeof record?.ttlSeconds === 'number' ? record.ttlSeconds : null,
-      ownerAddress: typeof record?.owner === 'string' ? record.owner : null
+      ownerAddress: typeof record?.owner === 'string' ? record.owner : null,
+      displayName: typeof record?.displayName === 'string' ? record.displayName : null,
+      logo: typeof record?.logo === 'string' ? record.logo : null,
+      description: typeof record?.description === 'string' ? record.description : null,
+      keywords: getAntRecordKeywords(record)
     }))
     .sort((a, b) => a.undername.localeCompare(b.undername));
 }
@@ -531,16 +552,33 @@ export class GatewayClient implements GatewayDataSource {
   }
 
   async getArnsProcessRecords(processId: string): Promise<GatewayArnsProcessRecord[]> {
+    const info = await this.getArnsProcessInfo(processId);
+    return info?.records ?? [];
+  }
+
+  async getArnsProcessInfo(processId: string): Promise<GatewayArnsProcessInfo | null> {
     try {
       const { ANT } = await import('@ar.io/sdk');
       const ant = ANT.init({ processId });
-      const records = await ant.getRecords();
+      const [records, ownerAddress, controllerAddresses] = await Promise.all([
+        ant.getRecords(),
+        ant.getOwner().catch(() => null),
+        ant.getControllers().catch(() => [])
+      ]);
       if (!records || typeof records !== 'object') {
-        return [];
+        return {
+          ownerAddress,
+          controllerAddresses,
+          records: []
+        };
       }
-      return mapAntRecordEntries(records as Record<string, any>);
+      return {
+        ownerAddress,
+        controllerAddresses,
+        records: mapAntRecordEntries(records as Record<string, any>)
+      };
     } catch {
-      return [];
+      return null;
     }
   }
 
