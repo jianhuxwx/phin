@@ -19,7 +19,10 @@ async function apiFetch<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { next: { revalidate: 0 } })
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText)
-    throw new Error(`API ${res.status}: ${text}`)
+    // Truncate large error bodies (e.g. full gateway responses) to avoid
+    // ballooning the error message and Next.js /_error page data.
+    const message = text.length > 200 ? text.slice(0, 200) + '…' : text
+    throw new Error(`API ${res.status}: ${message}`)
   }
   return res.json() as Promise<T>
 }

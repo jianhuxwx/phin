@@ -30,6 +30,14 @@ export function useBlockTxs(id: string, page = 1, limit = 20, height?: number) {
   )
 }
 
+export function useRecentBlocks(limit = 15) {
+  return useSWR(
+    ['blocks-recent', limit],
+    () => api.getBlocks(1, limit),
+    { refreshInterval: 15_000 }
+  )
+}
+
 // Transactions
 export function useTx(id: string) {
   return useSWR(id ? ['tx', id] : null, () => api.getTx(id))

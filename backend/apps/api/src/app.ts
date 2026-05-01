@@ -75,8 +75,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
     const safeError = error as { statusCode?: number; message?: string };
     const statusCode = safeError.statusCode ?? 500;
     request.log.error({ err: error }, 'Request failed');
+    // Truncate large error messages (e.g. full gateway response bodies)
+    // before sending to the client.
+    const rawMessage = safeError.message || 'Internal Server Error';
+    const message = statusCode === 500
+      ? 'Internal Server Error'
+      : rawMessage.length > 300 ? rawMessage.slice(0, 300) + '…' : rawMessage;
     reply.status(statusCode).send({
-      error: safeError.message || 'Internal Server Error',
+      error: message,
       statusCode,
     });
   });

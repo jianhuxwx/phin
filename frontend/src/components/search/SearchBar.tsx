@@ -13,6 +13,12 @@ export default function SearchBar() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  const normalizeQuery = useCallback((raw: string) => {
+    const trimmed = raw.trim()
+    const blockHeight = trimmed.match(/^#\s*(\d+)$/)
+    return blockHeight ? blockHeight[1] : trimmed
+  }, [])
+
   const fetchSuggestions = useCallback(async (q: string) => {
     if (q.length < 2) { setSuggestions([]); return }
     try {
@@ -32,11 +38,12 @@ export default function SearchBar() {
   }
 
   const navigate = useCallback(async (q: string) => {
-    if (!q.trim()) return
+    const normalized = normalizeQuery(q)
+    if (!normalized) return
     setLoading(true)
     setOpen(false)
     try {
-      const result = await search(q.trim())
+      const result = await search(normalized)
       if (!result.target) throw new Error('not found')
       switch (result.type) {
         case 'transaction': router.push(`/tx/${result.target}`); break
@@ -47,15 +54,14 @@ export default function SearchBar() {
       }
     } catch {
       // Try direct navigation as fallback
-      const trimmed = q.trim()
-      if (/^\d+$/.test(trimmed)) router.push(`/block/${trimmed}`)
-      else if (/^[a-zA-Z0-9_-]{43}$/.test(trimmed)) router.push(`/tx/${trimmed}`)
-      else if (/^[a-zA-Z0-9_-]{44,128}$/.test(trimmed)) router.push(`/block/${trimmed}`)
-      else router.push(`/arns/${trimmed}`)
+      if (/^\d+$/.test(normalized)) router.push(`/block/${normalized}`)
+      else if (/^[a-zA-Z0-9_-]{43}$/.test(normalized)) router.push(`/tx/${normalized}`)
+      else if (/^[a-zA-Z0-9_-]{44,128}$/.test(normalized)) router.push(`/block/${normalized}`)
+      else router.push(`/arns/${normalized}`)
     } finally {
       setLoading(false)
     }
-  }, [router])
+  }, [normalizeQuery, router])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

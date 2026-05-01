@@ -683,12 +683,16 @@ export class GatewayClient implements GatewayDataSource {
       return cached;
     }
 
-    const response = await this.request<any>((client) =>
-      client.request(GET_BLOCK_BY_ID, { id })
-    );
-    const block = response.block ? await this.enrichBlock(mapBlock(response.block)) : null;
-    this.cacheBlock(block);
-    return block;
+    try {
+      const response = await this.request<any>((client) =>
+        client.request(GET_BLOCK_BY_ID, { id })
+      );
+      const block = response.block ? await this.enrichBlock(mapBlock(response.block)) : null;
+      this.cacheBlock(block);
+      return block;
+    } catch {
+      return null;
+    }
   }
 
   async getBlockByHeight(height: number): Promise<ArweaveBlock | null> {
@@ -697,13 +701,17 @@ export class GatewayClient implements GatewayDataSource {
       return cached;
     }
 
-    const response = await this.request<any>((client) =>
-      client.request(GET_BLOCK_BY_HEIGHT, { height })
-    );
-    const edge = response.blocks?.edges?.[0];
-    const block = edge?.node ? await this.enrichBlock(mapBlock(edge.node)) : null;
-    this.cacheBlock(block);
-    return block;
+    try {
+      const response = await this.request<any>((client) =>
+        client.request(GET_BLOCK_BY_HEIGHT, { height })
+      );
+      const edge = response.blocks?.edges?.[0];
+      const block = edge?.node ? await this.enrichBlock(mapBlock(edge.node)) : null;
+      this.cacheBlock(block);
+      return block;
+    } catch {
+      return null;
+    }
   }
 
   async getBlockTransactions(
