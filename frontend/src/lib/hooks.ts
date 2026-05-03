@@ -67,6 +67,22 @@ export function useWalletArns(address: string) {
   return useSWR(address ? ['wallet-arns', address] : null, () => api.getWalletArns(address))
 }
 
+// Recent transactions across N most recent blocks
+export function useRecentTransactions(blockLimit = 5) {
+  const { data: blocksData } = useRecentBlocks(blockLimit)
+  const blockIds = blocksData?.data.map((b) => b.id) ?? []
+  return useSWR(
+    blockIds.length ? ['recent-txs', ...blockIds] : null,
+    () =>
+      Promise.all(
+        blockIds.map((id) =>
+          api.getBlockTxs(id, 1, 20).catch(() => ({ data: [], pagination: { page: 1, limit: 20, hasNextPage: false } }))
+        )
+      ).then((pages) => pages.flatMap((p) => p.data)),
+    { refreshInterval: 15_000 }
+  )
+}
+
 // ArNS
 export function useArns(page = 1, search?: string) {
   return useSWR(['arns', page, search], () => api.getArns(page, 20, search), {

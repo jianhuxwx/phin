@@ -79,3 +79,12 @@ body {
 .block-strip-new {
   animation: slideInRight 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+
+/* Transaction feed: new entry fade-slide-in */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.tx-feed-new {
+  animation: fadeSlideIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
